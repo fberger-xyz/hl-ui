@@ -203,18 +203,21 @@ function TradingChart({ className = 'h-full w-full' }: TradingChartProps = {}) {
 
     // reset initial data flag when symbol changes
     useEffect(() => {
-        initialDataSetRef.current = false
-        prevCandlesLengthRef.current = 0
-        // clear existing data when symbol changes
-        if (prevSymbolRef.current === symbol || !chartRef.current) return
-        if (candleSeriesRef.current) candleSeriesRef.current.setData([])
-        if (lineSeriesRef.current) lineSeriesRef.current.setData([])
-        if (areaSeriesRef.current) areaSeriesRef.current.setData([])
-        if (volumeSeriesRef.current) volumeSeriesRef.current.setData([])
-        // reset chart view
-        chartRef.current.timeScale().resetTimeScale()
-        chartRef.current.priceScale('right').applyOptions({ autoScale: true })
-        prevSymbolRef.current = symbol
+        if (prevSymbolRef.current !== symbol) {
+            initialDataSetRef.current = false
+            prevCandlesLengthRef.current = 0
+            // clear existing data when symbol changes
+            if (chartRef.current) {
+                if (candleSeriesRef.current) candleSeriesRef.current.setData([])
+                if (lineSeriesRef.current) lineSeriesRef.current.setData([])
+                if (areaSeriesRef.current) areaSeriesRef.current.setData([])
+                if (volumeSeriesRef.current) volumeSeriesRef.current.setData([])
+                // reset chart view
+                chartRef.current.timeScale().resetTimeScale()
+                chartRef.current.priceScale('right').applyOptions({ autoScale: true })
+            }
+            prevSymbolRef.current = symbol
+        }
     }, [symbol])
 
     useEffect(() => {

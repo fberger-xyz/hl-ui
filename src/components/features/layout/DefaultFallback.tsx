@@ -1,5 +1,5 @@
 import PageWrapper from '@/components/shared/Wrappers/PageWrapper'
-import Skeleton from '@/components/shared/Skeleton/Skeleton'
+import Skeleton from '@/components/shared/Skeleton'
 
 export function DefaultFallbackContent() {
     return (

@@ -4,13 +4,13 @@ import { useState, useRef, useLayoutEffect, useEffect, useMemo } from 'react'
 import IconWrapper from '@/components/shared/Wrappers/IconWrapper'
 import { IconIds } from '@/enums/icons.enum'
 import { ImageWrapper } from '@/components/shared/Wrappers/ImageWrapper'
-import Dropdown from '@/components/primitives/Dropdown/Dropdown'
+import Dropdown from '@/components/primitives/Dropdown'
 import { useHyperliquidMarkets } from '@/hooks/useHyperliquidMarkets'
 import { cn, withMemo } from '@/utils'
 import { useUiStore } from '@/stores/ui.store'
 import { useMarketStore } from '@/stores/market.store'
 import { SearchInput } from '@/components/primitives/Input/Input'
-import Switch from '@/components/primitives/Switch/Switch'
+import Switch from '@/components/primitives/Switch'
 import { PublicFiles } from '@/enums'
 import numeral from 'numeral'
 import { ReactNode } from 'react'
@@ -446,44 +446,53 @@ function TradePairSelector() {
             // skip if market data is invalid
             if (!market || !market.symbol) return false
 
-            // first apply search filter using debounced query
+            // first apply category filter
+            let matchesCategory = false
+            switch (selectedCategory) {
+                case 'All Coins':
+                    matchesCategory = true
+                    break
+                case 'Perps':
+                    matchesCategory = market.type === 'perp'
+                    break
+                case 'Spot':
+                    matchesCategory = market.type === 'spot'
+                    break
+                case 'Trending':
+                    // sort by volume and take top 10
+                    matchesCategory = markets
+                        .sort((a, b) => parseFloat(b.dayNtlVlm || '0') - parseFloat(a.dayNtlVlm || '0'))
+                        .slice(0, 10)
+                        .includes(market)
+                    break
+                case 'Pre-launch':
+                    // this would need additional data about launch dates
+                    matchesCategory = false
+                    break
+                default:
+                    // for ai, defi, gaming, etc.
+                    // const categoryCoins = CATEGORY_COINS[selectedCategory] || []
+                    // matchesCategory = categoryCoins.includes(market.symbol)
+                    matchesCategory = true
+                    break
+            }
+
+            // return early if doesn't match category
+            if (!matchesCategory) return false
+
+            // then apply search filter if there's a query
             if (!debouncedSearchQuery) return true
+
             const query = debouncedSearchQuery.toLowerCase()
             const symbol = market.symbol.toLowerCase()
             const name = market.name?.toLowerCase() || ''
 
             if (filterMode === 'Strict') {
                 // strict mode: starts with for symbol
-                const matchesSearch = symbol.startsWith(query) || name.startsWith(query)
-                if (!matchesSearch) return false
+                return symbol.startsWith(query) || name.startsWith(query)
             } else {
                 // all mode: includes search for both symbol and name
-                const matchesSearch = symbol.includes(query) || name.includes(query)
-                if (!matchesSearch) return false
-            }
-
-            // then apply category filter
-            switch (selectedCategory) {
-                case 'All Coins':
-                    return true
-                case 'Perps':
-                    return market.type === 'perp'
-                case 'Spot':
-                    return market.type === 'spot'
-                case 'Trending':
-                    // sort by volume and take top 10
-                    return markets
-                        .sort((a, b) => parseFloat(b.dayNtlVlm || '0') - parseFloat(a.dayNtlVlm || '0'))
-                        .slice(0, 10)
-                        .includes(market)
-                case 'Pre-launch':
-                    // this would need additional data about launch dates
-                    return false
-                default:
-                    // for ai, defi, gaming, etc.
-                    // const categoryCoins = CATEGORY_COINS[selectedCategory] || []
-                    // return categoryCoins.includes(market.symbol)
-                    return true
+                return symbol.includes(query) || name.includes(query)
             }
         })
     }, [markets, debouncedSearchQuery, filterMode, selectedCategory])
@@ -575,86 +584,90 @@ function TradePairSelector() {
                 </div>
 
                 {/* list */}
-                <div className="max-h-[400px] overflow-y-auto">
+                <div className="relative max-h-[400px] overflow-y-auto">
                     {/* headers */}
-                    <MarketRowTemplate
-                        isHeader
-                        isSpot={selectedCategory === 'Spot'}
-                        symbol={
-                            <button
-                                onClick={() => showNotImplementedToast('Sort by Symbol not yet implemented')}
-                                className="group flex cursor-pointer items-center justify-start gap-1 text-hlt-17">
-                                <p className="text-xs">Symbol</p>
-                                <IconWrapper
-                                    id={IconIds.CHEVRON_DOWN}
-                                    className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
-                                />
-                            </button>
-                        }
-                        price={
-                            <button
-                                onClick={() => showNotImplementedToast('Sort by Price not yet implemented')}
-                                className="group flex cursor-pointer items-center gap-1 text-hlt-17">
-                                <p className="text-xs">Last Price</p>
-                                <IconWrapper
-                                    id={IconIds.CHEVRON_DOWN}
-                                    className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
-                                />
-                            </button>
-                        }
-                        change24h={
-                            <button
-                                onClick={() => showNotImplementedToast('Sort by 24hr Change not yet implemented')}
-                                className="group flex cursor-pointer items-center gap-1 text-hlt-17">
-                                <p className="text-xs">24hr Change</p>
-                                <IconWrapper
-                                    id={IconIds.CHEVRON_DOWN}
-                                    className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
-                                />
-                            </button>
-                        }
-                        funding={
-                            selectedCategory !== 'Spot' ? (
+                    <div className="sticky top-0 z-10 bg-hlb-19">
+                        <MarketRowTemplate
+                            isHeader
+                            isSpot={selectedCategory === 'Spot'}
+                            symbol={
                                 <button
-                                    onClick={() =>
-                                        showNotImplementedToast(`Sort by ${selectedCategory === 'Trending' ? 'Rank' : 'Funding'} not yet implemented`)
-                                    }
-                                    className="group flex cursor-pointer items-center gap-1 text-hlt-17">
-                                    <p className="text-xs">{selectedCategory === 'Trending' ? 'Rank' : '8hr Funding'}</p>
+                                    onClick={() => showNotImplementedToast('Sort by Symbol not yet implemented')}
+                                    className="group flex cursor-pointer items-center justify-start gap-1 text-hlt-17">
+                                    <p className="text-xs">Symbol</p>
                                     <IconWrapper
                                         id={IconIds.CHEVRON_DOWN}
                                         className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
                                     />
                                 </button>
-                            ) : undefined
-                        }
-                        volume={
-                            <button
-                                onClick={() => showNotImplementedToast('Sort by Volume not yet implemented')}
-                                className="group flex cursor-pointer items-center gap-1 text-hlt-17">
-                                <p className="text-xs">Volume</p>
-                                <IconWrapper
-                                    id={IconIds.CHEVRON_DOWN}
-                                    className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
-                                />
-                            </button>
-                        }
-                        lastColumn={
-                            <button
-                                onClick={() =>
-                                    showNotImplementedToast(
-                                        `Sort by ${selectedCategory === 'Spot' ? 'Market Cap' : 'Open Interest'} not yet implemented`,
-                                    )
-                                }
-                                className="group flex cursor-pointer items-center gap-1 text-hlt-17">
-                                <p className="text-xs">{selectedCategory === 'Spot' ? 'Market Cap' : 'Open Interest'}</p>
-                                <IconWrapper
-                                    id={IconIds.CHEVRON_DOWN}
-                                    className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
-                                />
-                            </button>
-                        }
-                    />
+                            }
+                            price={
+                                <button
+                                    onClick={() => showNotImplementedToast('Sort by Price not yet implemented')}
+                                    className="group flex cursor-pointer items-center gap-1 text-hlt-17">
+                                    <p className="text-xs">Last Price</p>
+                                    <IconWrapper
+                                        id={IconIds.CHEVRON_DOWN}
+                                        className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
+                                    />
+                                </button>
+                            }
+                            change24h={
+                                <button
+                                    onClick={() => showNotImplementedToast('Sort by 24hr Change not yet implemented')}
+                                    className="group flex cursor-pointer items-center gap-1 text-hlt-17">
+                                    <p className="text-xs">24hr Change</p>
+                                    <IconWrapper
+                                        id={IconIds.CHEVRON_DOWN}
+                                        className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
+                                    />
+                                </button>
+                            }
+                            funding={
+                                selectedCategory !== 'Spot' ? (
+                                    <button
+                                        onClick={() =>
+                                            showNotImplementedToast(
+                                                `Sort by ${selectedCategory === 'Trending' ? 'Rank' : 'Funding'} not yet implemented`,
+                                            )
+                                        }
+                                        className="group flex cursor-pointer items-center gap-1 text-hlt-17">
+                                        <p className="text-xs">{selectedCategory === 'Trending' ? 'Rank' : '8hr Funding'}</p>
+                                        <IconWrapper
+                                            id={IconIds.CHEVRON_DOWN}
+                                            className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
+                                        />
+                                    </button>
+                                ) : undefined
+                            }
+                            volume={
+                                <button
+                                    onClick={() => showNotImplementedToast('Sort by Volume not yet implemented')}
+                                    className="group flex cursor-pointer items-center gap-1 text-hlt-17">
+                                    <p className="text-xs">Volume</p>
+                                    <IconWrapper
+                                        id={IconIds.CHEVRON_DOWN}
+                                        className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
+                                    />
+                                </button>
+                            }
+                            lastColumn={
+                                <button
+                                    onClick={() =>
+                                        showNotImplementedToast(
+                                            `Sort by ${selectedCategory === 'Spot' ? 'Market Cap' : 'Open Interest'} not yet implemented`,
+                                        )
+                                    }
+                                    className="group flex cursor-pointer items-center gap-1 text-hlt-17">
+                                    <p className="text-xs">{selectedCategory === 'Spot' ? 'Market Cap' : 'Open Interest'}</p>
+                                    <IconWrapper
+                                        id={IconIds.CHEVRON_DOWN}
+                                        className="size-3.5 text-transparent transition-colors duration-200 group-hover:text-hlt-17"
+                                    />
+                                </button>
+                            }
+                        />
+                    </div>
 
                     {/* rows */}
                     {isLoading && !filteredMarkets.length ? (

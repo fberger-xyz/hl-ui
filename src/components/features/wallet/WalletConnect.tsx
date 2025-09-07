@@ -7,7 +7,7 @@ import { cn } from '@/utils'
 import toast from 'react-hot-toast'
 import IconWrapper from '@/components/shared/Wrappers/IconWrapper'
 import { IconIds } from '@/enums/icons.enum'
-import Dropdown from '@/components/primitives/Dropdown/Dropdown'
+import Dropdown from '@/components/primitives/Dropdown'
 import StyledTooltip from '@/components/primitives/Tooltip/StyledTooltip'
 
 export function WalletConnect({ className }: { className?: string }) {
@@ -29,7 +29,10 @@ export function WalletConnect({ className }: { className?: string }) {
 
     if (!authenticated) {
         return (
-            <button type="button" onClick={login} className="rounded-lg bg-hlb-1 px-4 py-2 text-hlt-24 transition-colors duration-200 ease-in-out hover:bg-hlb-0">
+            <button
+                type="button"
+                onClick={login}
+                className="rounded-lg bg-hlb-1 px-4 py-2 text-hlt-24 transition-colors duration-200 ease-in-out hover:bg-hlb-0">
                 Connect
             </button>
         )
@@ -44,7 +47,9 @@ export function WalletConnect({ className }: { className?: string }) {
                 closeOnClick={true}
                 dropdownClassName="w-56"
                 trigger={(isOpen) => (
-                    <button type="button" className="flex items-center gap-2 rounded-lg border border-hlr-5 p-2 px-3 transition-all duration-300 ease-in-out">
+                    <button
+                        type="button"
+                        className="flex items-center gap-2 rounded-lg border border-hlr-5 p-2 px-3 transition-all duration-300 ease-in-out">
                         <span className="">{formatAddress(address)}</span>
                         <IconWrapper id={IconIds.CHEVRON_DOWN} className={cn('size-4 transition-transform', isOpen && 'rotate-180')} />
                     </button>

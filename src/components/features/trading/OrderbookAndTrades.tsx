@@ -5,9 +5,9 @@ import { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react
 import { IconIds, NuqsKeys, TradeOrderbookAndTradesTabs } from '@/enums'
 import { useQueryState } from 'nuqs'
 import IconWrapper from '@/components/shared/Wrappers/IconWrapper'
-import Dropdown from '@/components/primitives/Dropdown/Dropdown'
-import Orderbook from '@/components/features/trading/Orderbook/Orderbook'
-import Trades from '@/components/features/trading/Trades/Trades'
+import Dropdown from '@/components/primitives/Dropdown'
+import Orderbook from '@/components/features/trading/Orderbook'
+import Trades from '@/components/features/trading/Trades'
 
 // define tabs outside component to prevent recreation
 const TABS: TradeOrderbookAndTradesTabs[] = [TradeOrderbookAndTradesTabs.ORDERBOOK, TradeOrderbookAndTradesTabs.TRADES]
@@ -71,7 +71,9 @@ function OrderbookAndTrades() {
                 <div className="w10 flex items-center justify-end">
                     <Dropdown
                         trigger={
-                            <button type="button" className="ml-auto flex cursor-pointer items-center justify-center pr-2 text-hlt-17 hover:text-hlt-4">
+                            <button
+                                type="button"
+                                className="ml-auto flex cursor-pointer items-center justify-center pr-2 text-hlt-17 hover:text-hlt-4">
                                 <IconWrapper id={IconIds.DOTS_VERTICAL} className="size-5" />
                             </button>
                         }>

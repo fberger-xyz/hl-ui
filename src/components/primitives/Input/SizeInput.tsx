@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { cn } from '@/utils'
-import StyledSlider from '@/components/primitives/Slider/StyledSlider'
+import StyledSlider from '@/components/primitives/StyledSlider'
 
 interface SizeInputProps {
     maxSize?: number

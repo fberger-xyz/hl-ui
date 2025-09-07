@@ -2,7 +2,7 @@
 
 import IconWrapper from '@/components/shared/Wrappers/IconWrapper'
 import { IconIds } from '@/enums/icons.enum'
-import Switch from '@/components/primitives/Switch/Switch'
+import Switch from '@/components/primitives/Switch'
 import { useState, useMemo } from 'react'
 import { useUiStore } from '@/stores/ui.store'
 import { useMarketStore } from '@/stores/market.store'

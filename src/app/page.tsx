@@ -1,5 +1,5 @@
 import { Metadata } from 'next'
-import TradeClient from '@/components/templates/TradeClient/TradeClient'
+import TradeClient from '@/components/templates/TradeClient'
 
 // generate metadata for the page
 export async function generateMetadata(): Promise<Metadata> {

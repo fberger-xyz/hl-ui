@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
+import { useCacheStore } from '@/stores/cache.store'
 import type { CandleInterval, HyperliquidCandle, WebSocketCandleData, ChartData } from '@/types/hyperliquid.types'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums/hyperliquid.enum'
 
 interface UseHyperliquidChartOptions {
     symbol: string
@@ -11,7 +13,14 @@ interface UseHyperliquidChartOptions {
 export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: UseHyperliquidChartOptions): ChartData & {
     changeInterval: (newInterval: CandleInterval) => void
 } {
-    const [candles, setCandles] = useState<HyperliquidCandle[]>([])
+    const { getCachedCandles, setCachedCandles } = useCacheStore()
+    const cacheKey = `${symbol}:${interval}`
+
+    // initialize with cached data for instant display
+    const [candles, setCandles] = useState<HyperliquidCandle[]>(() => {
+        const cached = getCachedCandles(cacheKey)
+        return cached || []
+    })
     const [isLoading, setIsLoading] = useState(true)
     const [isConnected, setIsConnected] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -24,7 +33,14 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
     const fetchCandles = useCallback(
         async (sym: string, int: CandleInterval) => {
             try {
-                setIsLoading(true)
+                // show cached data immediately while fetching fresh
+                const cachedData = getCachedCandles(`${sym}:${int}`)
+                if (cachedData && cachedData.length > 0) {
+                    setCandles(cachedData)
+                    setIsLoading(false) // don't show spinner if we have cached data
+                } else {
+                    setIsLoading(true)
+                }
                 setError(null)
 
                 const endTime = Date.now()
@@ -71,6 +87,7 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
                 })
 
                 setCandles(normalizedCandles)
+                setCachedCandles(cacheKey, normalizedCandles) // cache for instant load
             } catch (err) {
                 console.error('Error fetching candles:', err)
                 setError(err instanceof Error ? err.message : 'Failed to fetch candles')
@@ -78,33 +95,37 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
                 setIsLoading(false)
             }
         },
-        [lookbackHours],
+        [lookbackHours, getCachedCandles, setCachedCandles, cacheKey],
     )
 
-    const handleCandleUpdate = useCallback((data: unknown) => {
-        // guard: invalid data
-        if (!data || typeof data !== 'object' || data === null) return
+    const handleCandleUpdate = useCallback(
+        (data: unknown) => {
+            // guard: invalid data
+            if (!data || typeof data !== 'object' || data === null) return
 
-        const candleData = data as WebSocketCandleData['data']
-        if (!candleData.t || !candleData.o || !candleData.h || !candleData.l || !candleData.c || !candleData.v) return
+            const candleData = data as WebSocketCandleData['data']
+            if (!candleData.t || !candleData.o || !candleData.h || !candleData.l || !candleData.c || !candleData.v) return
 
-        const newCandle: HyperliquidCandle = {
-            t: candleData.t,
-            o: candleData.o,
-            h: candleData.h,
-            l: candleData.l,
-            c: candleData.c,
-            v: candleData.v,
-        }
+            const newCandle: HyperliquidCandle = {
+                t: candleData.t,
+                o: candleData.o,
+                h: candleData.h,
+                l: candleData.l,
+                c: candleData.c,
+                v: candleData.v,
+            }
 
-        // always update the candle map with latest data
-        candleMapRef.current.set(newCandle.t, newCandle)
+            // always update the candle map with latest data
+            candleMapRef.current.set(newCandle.t, newCandle)
 
-        // create new sorted array for state update
-        const sortedCandles = Array.from(candleMapRef.current.values()).sort((a, b) => a.t - b.t)
-        setCandles(sortedCandles)
-        setIsConnected(true)
-    }, [])
+            // create new sorted array for state update
+            const sortedCandles = Array.from(candleMapRef.current.values()).sort((a, b) => a.t - b.t)
+            setCandles(sortedCandles)
+            setCachedCandles(`${symbol}:${currentInterval}`, sortedCandles) // cache updates
+            setIsConnected(true)
+        },
+        [symbol, currentInterval, setCachedCandles],
+    )
 
     const changeInterval = useCallback((newInterval: CandleInterval) => {
         setCurrentInterval(newInterval)
@@ -122,7 +143,7 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
 
         unsubscribeRef.current = hyperliquidWS.subscribe(
             {
-                type: 'candle',
+                type: HyperliquidWebSocketSubscriptionType.CANDLE,
                 coin: symbol,
                 interval: currentInterval,
             },
@@ -133,7 +154,7 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
             if (unsubscribeRef.current) unsubscribeRef.current()
             unsubscribeRef.current = null
         }
-    }, [symbol, currentInterval, fetchCandles, handleCandleUpdate])
+    }, [symbol, currentInterval, fetchCandles, handleCandleUpdate, setCachedCandles])
 
     // connection status is updated via WebSocket callbacks
 

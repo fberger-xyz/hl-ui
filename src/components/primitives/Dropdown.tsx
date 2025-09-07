@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { cn } from '@/utils'
-import toast from 'react-hot-toast'
-import { motion } from 'framer-motion'
+import { showKeyboardToast } from '@/utils/toast'
 
 interface DropdownProps {
     trigger: React.ReactNode | ((isOpen: boolean) => React.ReactNode)
@@ -15,17 +14,6 @@ interface DropdownProps {
     closeOnClick?: boolean
     triggerOn?: 'hover' | 'click' | 'both'
 }
-
-const KeyToast = ({ keyName }: { keyName: string }) => (
-    <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 10 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="flex items-center justify-center rounded-lg border border-hlr-5 bg-hlb-21 px-4 py-2 shadow-lg">
-        <span className="font-mono font-medium text-hlt-1">{keyName}</span>
-    </motion.div>
-)
 
 export default function Dropdown({
     trigger,
@@ -73,11 +61,7 @@ export default function Dropdown({
             if (event.key === 'Escape') {
                 setIsOpen(false)
                 // show toast when esc is pressed to close dropdown
-                toast.custom(<KeyToast keyName="ESC" />, {
-                    duration: 800,
-                    position: 'bottom-center',
-                    id: 'esc-key-toast',
-                })
+                showKeyboardToast('ESC')
             }
         }
 

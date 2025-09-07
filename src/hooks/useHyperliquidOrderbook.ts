@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
 import { HyperliquidWebSocketSubscriptionType } from '@/enums'
+import { throttle } from '@/utils'
+import { useCacheStore } from '@/stores/cache.store'
 import type { L2BookData } from '@/types/hyperliquid.types'
 import type { OrderbookData } from '@/types/trading.types'
 
@@ -14,13 +16,20 @@ export function useHyperliquidOrderbook({ symbol, levels = 20 }: UseHyperliquidO
     isConnected: boolean
     error: string | null
 } {
-    const [orderbook, setOrderbook] = useState<OrderbookData>({
-        bids: [],
-        asks: [],
-        spread: 0,
-        spreadPercentage: 0,
-        midPrice: 0,
-        lastUpdateTime: Date.now(),
+    const { getCachedOrderbook, setCachedOrderbook } = useCacheStore()
+
+    // initialize with cached data for instant display
+    const [orderbook, setOrderbook] = useState<OrderbookData>(() => {
+        const cached = getCachedOrderbook(symbol)
+        if (cached) return cached
+        return {
+            bids: [],
+            asks: [],
+            spread: 0,
+            spreadPercentage: 0,
+            midPrice: 0,
+            lastUpdateTime: Date.now(),
+        }
     })
     const [isLoading, setIsLoading] = useState(true)
     const [isConnected, setIsConnected] = useState(false)
@@ -91,6 +100,7 @@ export function useHyperliquidOrderbook({ symbol, levels = 20 }: UseHyperliquidO
 
             const processedData = processOrderbookData(orderbookData)
             setOrderbook(processedData)
+            setCachedOrderbook(symbol, processedData) // cache for instant load next time
             setIsConnected(true)
         } catch (err) {
             console.error('Error fetching orderbook:', err)
@@ -98,22 +108,25 @@ export function useHyperliquidOrderbook({ symbol, levels = 20 }: UseHyperliquidO
         } finally {
             setIsLoading(false)
         }
-    }, [symbol, processOrderbookData])
+    }, [symbol, processOrderbookData, setCachedOrderbook])
 
-    const handleOrderbookUpdate = useCallback(
-        (data: unknown) => {
-            // guard: invalid data
-            if (!data || typeof data !== 'object' || data === null) return
+    // throttle updates to 30fps for smooth ui without overwhelming
+    const handleOrderbookUpdate = useMemo(
+        () =>
+            throttle((data: unknown) => {
+                // guard: invalid data
+                if (!data || typeof data !== 'object' || data === null) return
 
-            const orderbookData = data as L2BookData
-            // guard: no levels
-            if (!orderbookData.levels || !Array.isArray(orderbookData.levels)) return
+                const orderbookData = data as L2BookData
+                // guard: no levels
+                if (!orderbookData.levels || !Array.isArray(orderbookData.levels)) return
 
-            const processedData = processOrderbookData(orderbookData)
-            setOrderbook(processedData)
-            setIsConnected(true)
-        },
-        [processOrderbookData],
+                const processedData = processOrderbookData(orderbookData)
+                setOrderbook(processedData)
+                setCachedOrderbook(symbol, processedData) // cache for instant load next time
+                setIsConnected(true)
+            }, 33), // 33ms = ~30fps
+        [processOrderbookData, setCachedOrderbook, symbol],
     )
 
     useEffect(() => {

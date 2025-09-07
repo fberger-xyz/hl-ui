@@ -8,8 +8,8 @@ import { AppUrls, PublicFiles, IconIds } from '@/enums'
 import IconWrapper from '@/components/shared/Wrappers/IconWrapper'
 import LinkWrapper from '@/components/shared/Wrappers/LinkWrapper'
 import { ImageWrapper } from '@/components/shared/Wrappers/ImageWrapper'
-import { WalletConnect } from '@/components/features/wallet/WalletConnect/WalletConnect'
-import Dropdown from '@/components/primitives/Dropdown/Dropdown'
+import { WalletConnect } from '@/components/features/wallet/WalletConnect'
+import Dropdown from '@/components/primitives/Dropdown'
 
 export default function HeaderMobile() {
     const { showMobileMenu, setShowMobileMenu } = useUiStore()

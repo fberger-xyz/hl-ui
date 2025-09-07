@@ -2,13 +2,13 @@
 
 import IconWrapper from '@/components/shared/Wrappers/IconWrapper'
 import { IconIds } from '@/enums/icons.enum'
-import Dropdown from '@/components/primitives/Dropdown/Dropdown'
+import Dropdown from '@/components/primitives/Dropdown'
 import { PublicFiles } from '@/enums/files.enum'
 import { ImageWrapper } from '@/components/shared/Wrappers/ImageWrapper'
 import LinkWrapper from '@/components/shared/Wrappers/LinkWrapper'
 import { AppUrls } from '@/enums/app.enum'
 import { cn } from '@/utils'
-import { WalletConnect } from '@/components/features/wallet/WalletConnect/WalletConnect'
+import { WalletConnect } from '@/components/features/wallet/WalletConnect'
 import { showNotImplementedToast } from '@/utils/toast'
 
 export default function HeaderDesktop() {

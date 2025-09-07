@@ -1,8 +1,8 @@
 'use client'
 
 import { useMarketStore } from '@/stores/market.store'
-import SpotTradePanel from '@/components/features/trading/SpotTradePanel/SpotTradePanel'
-import PerpTradePanel from '@/components/features/trading/PerpTradePanel/PerpTradePanel'
+import SpotTradePanel from '@/components/features/trading/SpotTradePanel'
+import PerpTradePanel from '@/components/features/trading/PerpTradePanel'
 
 export default function TradePanel() {
     const { selectedMarket } = useMarketStore()
