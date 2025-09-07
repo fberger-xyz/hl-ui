@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
 import type { Trade } from '@/types/hyperliquid.types'
 
 interface UseHyperliquidTradesOptions {
@@ -85,7 +86,7 @@ export function useHyperliquidTrades({ symbol, limit = 100 }: UseHyperliquidTrad
         // subscribe to websocket updates
         unsubscribeRef.current = hyperliquidWS.subscribe(
             {
-                type: 'trades',
+                type: HyperliquidWebSocketSubscriptionType.TRADES,
                 coin: symbol,
             },
             handleNewTrade,

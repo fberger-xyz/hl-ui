@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
 import type { SubscriptionOptions } from '@/types/hyperliquid.types'
 
 type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'error'
@@ -38,7 +39,7 @@ export const useWsStore = create<WsState>((set, get) => ({
 
             // build subscription options
             const options: SubscriptionOptions = {
-                type: type as SubscriptionOptions['type'],
+                type: type as HyperliquidWebSocketSubscriptionType,
             }
             if (params[0]) options.coin = params[0]
             if (params[1]) options.interval = params[1]

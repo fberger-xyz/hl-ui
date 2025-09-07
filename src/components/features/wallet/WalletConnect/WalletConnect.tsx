@@ -29,8 +29,8 @@ export function WalletConnect({ className }: { className?: string }) {
 
     if (!authenticated) {
         return (
-            <button onClick={login} className="rounded-lg bg-hlb-1 px-4 py-2 text-hlt-24 transition-colors duration-200 ease-in-out hover:bg-hlb-0">
-                <p>Connect</p>
+            <button type="button" onClick={login} className="rounded-lg bg-hlb-1 px-4 py-2 text-hlt-24 transition-colors duration-200 ease-in-out hover:bg-hlb-0">
+                Connect
             </button>
         )
     }
@@ -44,7 +44,7 @@ export function WalletConnect({ className }: { className?: string }) {
                 closeOnClick={true}
                 dropdownClassName="w-56"
                 trigger={(isOpen) => (
-                    <button className="flex items-center gap-2 rounded-lg border border-hlr-5 p-2 px-3 transition-all duration-300 ease-in-out">
+                    <button type="button" className="flex items-center gap-2 rounded-lg border border-hlr-5 p-2 px-3 transition-all duration-300 ease-in-out">
                         <span className="">{formatAddress(address)}</span>
                         <IconWrapper id={IconIds.CHEVRON_DOWN} className={cn('size-4 transition-transform', isOpen && 'rotate-180')} />
                     </button>
@@ -57,6 +57,7 @@ export function WalletConnect({ className }: { className?: string }) {
                                 <p className="">{formatAddress(address)}</p>
                             </StyledTooltip>
                             <button
+                                type="button"
                                 onClick={copyAddress}
                                 className="rounded-lg p-2 transition-colors duration-200 ease-in-out"
                                 title="Copy address"
@@ -75,6 +76,7 @@ export function WalletConnect({ className }: { className?: string }) {
                                     .filter((w) => w.address !== address)
                                     .map((wallet) => (
                                         <button
+                                            type="button"
                                             key={wallet.address}
                                             onClick={() => setActiveWallet(wallet)}
                                             className="w-full px-3 py-2 text-left transition-colors duration-200 ease-in-out hover:bg-hlb-21">
@@ -87,9 +89,10 @@ export function WalletConnect({ className }: { className?: string }) {
 
                     {/* Disconnect button */}
                     <button
+                        type="button"
                         onClick={() => logout()}
                         className="w-full px-3 py-3 text-left text-hlt-8 transition-colors duration-200 ease-in-out hover:text-hlt-4">
-                        <p>Disconnect</p>
+                        Disconnect
                     </button>
                 </div>
             </Dropdown>
@@ -106,6 +109,7 @@ export function WalletConnect({ className }: { className?: string }) {
         //     </button>
         // </div>
         <button
+            type="button"
             onClick={() => connectWallet()}
             className="w-full rounded-lg bg-hlb-1 px-4 py-2 font-medium text-hlt-21 transition-colors hover:bg-hlb-0">
             Connect

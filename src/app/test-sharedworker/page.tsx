@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { hyperliquidSharedWS } from '@/services/hyperliquid-websocket-sharedworker'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums/hyperliquid.enum'
 
 export default function TestSharedWorkerPage() {
     const [lastMessage, setLastMessage] = useState<{ data: string; timestamp: number } | null>(null)
@@ -38,7 +39,7 @@ export default function TestSharedWorkerPage() {
 
     const handleSubscribe = () => {
         if (!subscribed) {
-            unsubscribeRef.current = hyperliquidSharedWS.subscribe({ type: 'allMids' }, (data) => {
+            unsubscribeRef.current = hyperliquidSharedWS.subscribe({ type: HyperliquidWebSocketSubscriptionType.ALL_MIDS }, (data) => {
                 setLastMessage({
                     data: JSON.stringify(data, null, 2),
                     timestamp: Date.now(),
@@ -60,7 +61,20 @@ export default function TestSharedWorkerPage() {
         <div className="container mx-auto p-4">
             <h1 className="mb-4 text-2xl font-bold">SharedWorker WebSocket Test</h1>
 
-            <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div className="my-4 rounded border border-blue-200 p-4">
+                <p className="mb-1 text-xs font-semibold">How to verify SharedWorker is working:</p>
+                <ol className="list-inside list-decimal space-y-1 text-xs">
+                    <li>Open this page in 2+ browser tabs</li>
+                    <li>Click &quot;Connect&quot; in any tab (only needed once)</li>
+                    <li>Click &quot;Subscribe&quot; in all tabs</li>
+                    <li>Watch the &quot;Shared Connection Stats&quot; - you should see:</li>
+                    <li className="ml-4">• Number of tabs increase as you open more</li>
+                    <li className="ml-4">• Same message count across all tabs</li>
+                    <li className="ml-4">• Connection time stays the same</li>
+                </ol>
+            </div>
+
+            <div className="my-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="rounded border p-4">
                     <h2 className="mb-2 text-lg font-semibold">This Tab</h2>
                     <div className="space-y-2">
@@ -130,19 +144,6 @@ export default function TestSharedWorkerPage() {
                         </>
                     )}
                 </div>
-            </div>
-
-            <div className="mt-4 rounded border border-blue-200 p-4">
-                <p className="mb-1 text-xs font-semibold">How to verify SharedWorker is working:</p>
-                <ol className="list-inside list-decimal space-y-1 text-xs">
-                    <li>Open this page in 2+ browser tabs</li>
-                    <li>Click &quot;Connect&quot; in any tab (only needed once)</li>
-                    <li>Click &quot;Subscribe&quot; in all tabs</li>
-                    <li>Watch the &quot;Shared Connection Stats&quot; - you should see:</li>
-                    <li className="ml-4">• Number of tabs increase as you open more</li>
-                    <li className="ml-4">• Same message count across all tabs</li>
-                    <li className="ml-4">• Connection time stays the same</li>
-                </ol>
             </div>
         </div>
     )

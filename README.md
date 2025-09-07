@@ -11,7 +11,13 @@
 - many error boundaries
 - pwa support (add to screen / dock from gchrome or safari)
 
-**todo:**
+**todo / wip**
 
 - clean the code especially the shared worker implem
 - simplify themes
+- agent registration
+- market orders
+
+## VS Code Extensions
+
+See [recommended-extensions.png](./recommended-extensions.png) for suggested VS Code / Cursor extensions.

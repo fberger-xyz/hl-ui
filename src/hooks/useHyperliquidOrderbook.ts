@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
 import type { L2BookData } from '@/types/hyperliquid.types'
 import type { OrderbookData } from '@/types/trading.types'
 
@@ -120,7 +121,7 @@ export function useHyperliquidOrderbook({ symbol, levels = 20 }: UseHyperliquidO
 
         unsubscribeRef.current = hyperliquidWS.subscribe(
             {
-                type: 'l2Book',
+                type: HyperliquidWebSocketSubscriptionType.L2_BOOK,
                 coin: symbol,
             },
             handleOrderbookUpdate,

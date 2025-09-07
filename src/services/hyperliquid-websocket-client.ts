@@ -3,6 +3,7 @@
 // hyperliquid websocket client - handles serverless deployments
 // rate limits: 1200 weight/min rest, 2000 msg/min ws, 1000 subs max
 
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
 import type { SubscriptionCallback, WebSocketMessage, SubscriptionOptions } from '@/types/hyperliquid.types'
 
 class HyperliquidWebSocketClient {
@@ -330,8 +331,8 @@ class HyperliquidWebSocketClient {
     private getSubscriptionKey(channel: string, data: unknown): string {
         const typedData = data as Record<string, unknown>
 
-        if (channel === 'l2Book' && typedData?.coin) return `l2Book:${typedData.coin}`
-        if (channel === 'trades') {
+        if (channel === HyperliquidWebSocketSubscriptionType.L2_BOOK && typedData?.coin) return `l2Book:${typedData.coin}`
+        if (channel === HyperliquidWebSocketSubscriptionType.TRADES) {
             // handle both single and array trades
             if (Array.isArray(data)) {
                 const firstTrade = data[0] as Record<string, unknown>
@@ -351,7 +352,7 @@ class HyperliquidWebSocketClient {
                 return `candle:${typedData.coin}:${typedData.interval}`
             }
         }
-        if (channel === 'allMids') return 'allMids'
+        if (channel === HyperliquidWebSocketSubscriptionType.ALL_MIDS) return 'allMids'
         return `${channel}:${JSON.stringify(data)}`
     }
 
@@ -359,10 +360,11 @@ class HyperliquidWebSocketClient {
         const parts = key.split(':')
         const channel = parts[0]
 
-        if (channel === 'l2Book' || channel === 'trades') return [channel, { coin: parts[1] }]
+        if (channel === HyperliquidWebSocketSubscriptionType.L2_BOOK || channel === HyperliquidWebSocketSubscriptionType.TRADES)
+            return [channel, { coin: parts[1] }]
         if (channel === 'userEvents') return [channel, { user: parts[1] }]
         if (channel === 'candle') return [channel, { coin: parts[1], interval: parts[2] }]
-        if (channel === 'allMids') return [channel, {}]
+        if (channel === HyperliquidWebSocketSubscriptionType.ALL_MIDS) return [channel, {}]
 
         try {
             return [channel, JSON.parse(parts.slice(1).join(':'))]
@@ -381,7 +383,7 @@ class HyperliquidWebSocketClient {
         const key = this.getSubscriptionKey(options.type, options)
 
         // log candle subscriptions for debugging
-        if (options.type === 'candle') {
+        if (options.type === HyperliquidWebSocketSubscriptionType.CANDLE) {
             console.log('Creating candle subscription:', {
                 options,
                 key,
@@ -508,7 +510,14 @@ class HyperliquidWebSocketClient {
     }
 
     private calculateRequestWeight(requestType: string): number {
-        const lowWeightTypes = ['l2Book', 'allMids', 'clearinghouseState', 'orderStatus', 'spotClearinghouseState', 'exchangeStatus']
+        const lowWeightTypes = [
+            HyperliquidWebSocketSubscriptionType.L2_BOOK,
+            HyperliquidWebSocketSubscriptionType.ALL_MIDS,
+            'clearinghouseState',
+            'orderStatus',
+            'spotClearinghouseState',
+            'exchangeStatus',
+        ]
         const highWeightTypes = ['userRole']
 
         if (lowWeightTypes.includes(requestType)) return 2

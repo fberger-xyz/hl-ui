@@ -1,9 +1,7 @@
-// note: have a look to https://github.com/nktkas/hyperliquid
-
-// sharedworker-enabled hyperliquid websocket client
-// uses sharedworker when available, falls back to direct connection
+// note: see https://github.com/nktkas/hyperliquid
 
 import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
 import type { SubscriptionCallback, SubscriptionOptions } from '@/types/hyperliquid.types'
 import type { WorkerMessage } from '@/types/shared-worker'
 
@@ -12,21 +10,24 @@ class HyperliquidSharedWebSocketClient {
     private fallbackClient: typeof hyperliquidWS | null = null
     private sharedWorker: SharedWorker | null = null
     private port: MessagePort | null = null
+    private portId: number | null = null
     private isSharedWorkerConnected = false
     private subscriptions: Map<string, Set<SubscriptionCallback>> = new Map()
+    private channelToOptions: Map<string, SubscriptionOptions> = new Map()
     private readonly isDev = process.env.NODE_ENV === 'development'
+    private pingInterval: NodeJS.Timeout | null = null
 
     private constructor() {
         this.initConnection()
     }
 
     static getInstance(): HyperliquidSharedWebSocketClient {
-        if (!HyperliquidSharedWebSocketClient.instance) HyperliquidSharedWebSocketClient.instance = new HyperliquidSharedWebSocketClient()
-        return HyperliquidSharedWebSocketClient.instance
+        if (!this.instance) this.instance = new HyperliquidSharedWebSocketClient()
+        return this.instance
     }
 
     private async initConnection() {
-        // check browser support
+        // guard: browser support
         if (typeof window === 'undefined' || typeof SharedWorker === 'undefined') {
             if (this.isDev) console.log('[SharedWSClient] SharedWorker not supported, using fallback')
             this.initFallback()
@@ -34,14 +35,35 @@ class HyperliquidSharedWebSocketClient {
         }
 
         try {
-            // try sharedworker first
             this.sharedWorker = new SharedWorker('/websocket-worker.js', { name: 'hyperliquid-ws' })
             this.port = this.sharedWorker.port
 
+            // queue messages before init
+            const messageQueue: MessageEvent<WorkerMessage>[] = []
+            let isInitialized = false
+
+            // avoid race conditions
+            this.port.start()
+
             this.port.onmessage = (event: MessageEvent<WorkerMessage>) => {
+                if (!isInitialized && event.data.type !== 'init') {
+                    messageQueue.push(event)
+                    return
+                }
                 const message = event.data
 
                 switch (message.type) {
+                    case 'init':
+                        this.portId = message.portId || null
+                        if (this.isDev) console.log(`[SharedWSClient] Initialized with port ID: ${this.portId}`)
+                        this.startPingInterval()
+                        isInitialized = true
+                        messageQueue.forEach((queuedEvent) => {
+                            this.port?.dispatchEvent(new MessageEvent('message', { data: queuedEvent.data }))
+                        })
+                        messageQueue.length = 0
+                        break
+
                     case 'connected':
                         this.isSharedWorkerConnected = true
                         if (this.isDev) console.log('[SharedWSClient] Connected via SharedWorker')
@@ -53,8 +75,11 @@ class HyperliquidSharedWebSocketClient {
                         break
 
                     case 'message':
-                        this.handleMessage(message.data)
+                        this.handleMessage(message)
                         break
+
+                    case 'pong':
+                        break // worker alive
 
                     case 'stats':
                         // stats are handled by event listeners in getStats()
@@ -62,15 +87,16 @@ class HyperliquidSharedWebSocketClient {
 
                     case 'error':
                         console.error('[SharedWSClient] SharedWorker error:', message.data)
-                        // fallback on error
                         this.initFallback()
                         break
                 }
             }
 
-            this.port.start()
-            // initial ping
-            this.port.postMessage({ type: 'ping' })
+            if (typeof window !== 'undefined') {
+                window.addEventListener('beforeunload', () => {
+                    this.destroy()
+                })
+            }
         } catch (err) {
             if (this.isDev) console.log('[SharedWSClient] Failed to init SharedWorker:', err)
             this.initFallback()
@@ -83,41 +109,65 @@ class HyperliquidSharedWebSocketClient {
         if (this.isDev) console.log('[SharedWSClient] Using direct WebSocket connection')
     }
 
-    private handleMessage(data: unknown) {
-        const channelData = data as { channel?: string; data?: unknown }
-        const channel = channelData?.channel
-
+    private handleMessage(message: WorkerMessage) {
+        const channel = message.channel
         if (!channel) return
-        const callbacks = this.subscriptions.get(channel)
-        if (!callbacks || callbacks.size === 0) return
-        callbacks.forEach((cb) => {
-            try {
-                // pass the nested data, not the wrapper
-                cb(channelData.data || data)
-            } catch (error) {
-                console.error(`Error in subscription callback for ${channel}:`, error)
+
+        this.channelToOptions.forEach((options, key) => {
+            if (options.type === channel) {
+                const callbacks = this.subscriptions.get(key)
+                if (callbacks && callbacks.size > 0) {
+                    callbacks.forEach((cb) => {
+                        try {
+                            cb(message.data)
+                        } catch (error) {
+                            console.error(`Error in subscription callback for ${key}:`, error)
+                        }
+                    })
+                }
             }
         })
+    }
+
+    private startPingInterval() {
+        this.stopPingInterval()
+        this.pingInterval = setInterval(() => {
+            if (this.port) this.port.postMessage({ type: 'ping' })
+        }, 4000)
+    }
+
+    private stopPingInterval() {
+        if (!this.pingInterval) return
+        clearInterval(this.pingInterval)
+        this.pingInterval = null
     }
 
     private formatSubscriptionKey(options: SubscriptionOptions): string {
         const { type, coin, interval, user } = options
 
-        if (type === 'candle' && coin && interval) return `candle:${coin}:${interval}`
-        if (type === 'l2Book' && coin) return `l2Book:${coin}`
-        if (type === 'trades' && coin) return `trades:${coin}`
-        if (type === 'userEvents' && user) return `userEvents:${user}`
-        if (type === 'userFills' && user) return `userFills:${user}`
-        if (type === 'userOrders' && user) return `userOrders:${user}`
-        if (type === 'allMids') return 'allMids'
-
-        return `${type}:${coin || user || 'default'}`
+        switch (type) {
+            case HyperliquidWebSocketSubscriptionType.CANDLE:
+                return coin && interval ? `candle:${coin}:${interval}` : `candle:default`
+            case HyperliquidWebSocketSubscriptionType.L2_BOOK:
+                return coin ? `l2Book:${coin}` : `l2Book:default`
+            case HyperliquidWebSocketSubscriptionType.TRADES:
+                return coin ? `trades:${coin}` : `trades:default`
+            case HyperliquidWebSocketSubscriptionType.USER_EVENTS:
+                return user ? `userEvents:${user}` : `userEvents:default`
+            case HyperliquidWebSocketSubscriptionType.USER_FILLS:
+                return user ? `userFills:${user}` : `userFills:default`
+            case HyperliquidWebSocketSubscriptionType.USER_ORDERS:
+                return user ? `userOrders:${user}` : `userOrders:default`
+            case HyperliquidWebSocketSubscriptionType.ALL_MIDS:
+                return 'allMids'
+            default:
+                return `${type}:${coin || user || 'default'}`
+        }
     }
 
     connect(): Promise<void> {
         if (this.fallbackClient) return this.fallbackClient.connect()
-        // sharedworker auto-connects
-        return Promise.resolve()
+        return Promise.resolve() // auto-connects
     }
 
     getConnectionState(): 'connecting' | 'connected' | 'disconnected' | 'error' {
@@ -136,7 +186,6 @@ class HyperliquidSharedWebSocketClient {
         }) => void,
     ): void {
         if (this.fallbackClient) {
-            // no shared stats in fallback mode
             callback({
                 mode: 'direct',
                 message: 'Using direct WebSocket (SharedWorker not available)',
@@ -152,13 +201,12 @@ class HyperliquidSharedWebSocketClient {
             return
         }
 
-        // create a one-time handler for stats response
+        // one-time handler for stats
         const originalOnMessage = this.port.onmessage
         const port = this.port
         this.port.onmessage = (event: MessageEvent) => {
             if (event.data.type === 'stats') {
                 callback(event.data.data)
-                // restore original handler
                 port.onmessage = originalOnMessage
             } else if (originalOnMessage) {
                 originalOnMessage.call(port, event)
@@ -169,46 +217,44 @@ class HyperliquidSharedWebSocketClient {
     }
 
     subscribe(options: SubscriptionOptions, callback: SubscriptionCallback): () => void {
-        // use fallback if available
         if (this.fallbackClient) {
             return this.fallbackClient.subscribe(options, callback)
         }
 
         const key = this.formatSubscriptionKey(options)
 
-        // track subscription
         if (!this.subscriptions.has(key)) {
             this.subscriptions.set(key, new Set())
+            this.channelToOptions.set(key, options)
         }
         this.subscriptions.get(key)!.add(callback)
 
-        // subscribe via sharedworker
         if (this.port) {
-            // send subscribe message with channel name
-            const channel = options.type
+            const subscription: Record<string, unknown> = { type: options.type }
+
+            if (options.coin) subscription.coin = options.coin
+            if (options.interval) subscription.interval = options.interval
+            if (options.user) subscription.user = options.user
+
             this.port.postMessage({
                 type: 'subscribe',
-                channel: channel,
+                subscription: subscription,
             })
         }
 
-        // return unsubscribe function
         return () => {
             const callbacks = this.subscriptions.get(key)
-            if (callbacks) {
-                callbacks.delete(callback)
+            if (!callbacks) return
+            callbacks.delete(callback)
+            if (callbacks.size > 0) return
 
-                if (callbacks.size === 0) {
-                    this.subscriptions.delete(key)
-
-                    if (this.port) {
-                        const channel = options.type
-                        this.port.postMessage({
-                            type: 'unsubscribe',
-                            channel: channel,
-                        })
-                    }
-                }
+            this.subscriptions.delete(key)
+            this.channelToOptions.delete(key)
+            if (this.port) {
+                this.port.postMessage({
+                    type: 'unsubscribe',
+                    channel: options.type,
+                })
             }
         }
     }
@@ -216,22 +262,23 @@ class HyperliquidSharedWebSocketClient {
     async fetchInfo(requestType: string, params: Record<string, unknown> = {}): Promise<unknown> {
         if (this.fallbackClient) return this.fallbackClient.fetchInfo(requestType, params)
 
-        // rest api calls still go through regular client
         return hyperliquidWS.fetchInfo(requestType, params)
     }
 
     reconnect() {
         if (this.fallbackClient) return this.fallbackClient.reconnect()
-        // sharedworker handles reconnection automatically
     }
 
     destroy() {
+        this.stopPingInterval()
         if (this.port) {
             this.port.close()
             this.port = null
         }
+        if (this.sharedWorker) this.sharedWorker = null
         if (this.fallbackClient) this.fallbackClient.destroy()
         this.subscriptions.clear()
+        this.channelToOptions.clear()
     }
 }
 

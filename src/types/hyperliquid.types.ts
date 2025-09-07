@@ -215,10 +215,15 @@ export interface WebSocketMessage {
     error?: string
 }
 
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
+
+// Re-export for backward compatibility
+export { HyperliquidWebSocketSubscriptionType } from '@/enums'
+
 export interface WebSocketSubscription {
     method: 'subscribe' | 'unsubscribe'
     subscription: {
-        type: 'l2Book' | 'trades' | 'allMids' | 'candle' | 'userEvents' | 'userFills' | 'userOrders'
+        type: HyperliquidWebSocketSubscriptionType
         coin?: string
         interval?: CandleInterval
         user?: UserAddress
@@ -226,7 +231,7 @@ export interface WebSocketSubscription {
 }
 
 export interface SubscriptionOptions {
-    type: 'l2Book' | 'trades' | 'allMids' | 'candle' | 'userEvents' | 'userFills' | 'userOrders'
+    type: HyperliquidWebSocketSubscriptionType
     coin?: string
     interval?: string
     user?: string

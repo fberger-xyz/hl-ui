@@ -37,6 +37,7 @@ export default function HeaderDesktop() {
                     align="right"
                     trigger={
                         <button
+                            type="button"
                             className="h-8 rounded-lg border border-hlr-5 p-1.5 transition-all duration-300 ease-in-out hover:bg-hlb-19"
                             aria-label="Languages">
                             <IconWrapper id={IconIds.WEB} className="size-5" />
@@ -45,6 +46,7 @@ export default function HeaderDesktop() {
                     <div className="h-full overflow-y-auto">
                         <div className="space-y-0.5 py-2">
                             <button
+                                type="button"
                                 onClick={() => showNotImplementedToast('Language settings not yet implemented')}
                                 className="flex w-full items-center justify-between px-4 py-2 text-xs transition-colors hover:bg-hlb-21">
                                 <span className="text-hlt-17">Todo</span>
@@ -57,6 +59,7 @@ export default function HeaderDesktop() {
                     align="right"
                     trigger={
                         <button
+                            type="button"
                             className="h-8 rounded-lg border border-hlr-5 p-1.5 transition-all duration-300 ease-in-out hover:bg-hlb-19"
                             aria-label="Settings">
                             <IconWrapper id={IconIds.SETTINGS} className="size-5" />
@@ -65,6 +68,7 @@ export default function HeaderDesktop() {
                     <div className="h-full overflow-y-auto">
                         <div className="space-y-0.5 py-2">
                             <button
+                                type="button"
                                 onClick={() => showNotImplementedToast('Settings not yet implemented')}
                                 className="flex w-full items-center justify-between px-4 py-2 text-xs transition-colors hover:bg-hlb-21">
                                 <span className="text-hlt-17">Todo</span>

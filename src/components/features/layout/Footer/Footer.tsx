@@ -23,7 +23,7 @@ export default function Footer(props: { className?: string }) {
             {/* left */}
             <LinkWrapper href={AppUrls.TEST_SHARED_WORKER} target="_blank" className="flex items-center gap-2">
                 {/* websocket status */}
-                <StyledTooltip content={process.env.NEXT_PUBLIC_HL_WS_URL || 'wss://api-ui.hyperliquid.xyz/ws'}>
+                <StyledTooltip content={<p>Open test page to check implementation</p>}>
                     <div
                         className={cn(
                             'flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',

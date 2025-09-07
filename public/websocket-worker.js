@@ -1,16 +1,19 @@
-// websocket sharedworker - plain js for browser compatibility
+// plain js for browser compatibility
 
 let ws = null
-const ports = []
-const portSubscriptions = new Map()
-const activeSubscriptions = new Set()
+const ports = new Map() // port id to {port, subscriptions, lastPing}
+const activeSubscriptions = new Map() // channel to subscription details
+let portIdCounter = 0
 
 const WS_URL = 'wss://api-ui.hyperliquid.xyz/ws'
 const RECONNECT_DELAY = 3000
 const HEARTBEAT_INTERVAL = 30000
+const PORT_PING_INTERVAL = 5000 // check health every 5s
+const PORT_PING_TIMEOUT = 10000 // dead after 10s
 
 let heartbeatTimer = null
 let reconnectTimer = null
+let portHealthTimer = null
 
 let connectionStats = {
     connectedAt: null,
@@ -20,28 +23,30 @@ let connectionStats = {
 
 function broadcast(message) {
     const messageWithTimestamp = { ...message, timestamp: Date.now() }
-    ports.forEach(port => {
+    ports.forEach(({ port }, portId) => {
         try {
             port.postMessage(messageWithTimestamp)
         } catch (error) {
-            console.error('Failed to post message to port:', error)
+            console.error(`Failed to post message to port ${portId}:`, error)
+            handlePortDisconnect(portId) // remove dead port
         }
     })
 }
 
-function sendToPort(port, message) {
+function sendToPort(port, message, portId = null) {
     const messageWithTimestamp = { ...message, timestamp: Date.now() }
     try {
         port.postMessage(messageWithTimestamp)
     } catch (error) {
-        console.error('Failed to send to port:', error)
+        console.error(`Failed to send to port ${portId}:`, error)
+        if (portId) {
+            handlePortDisconnect(portId)
+        }
     }
 }
 
 function connectWebSocket() {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        return
-    }
+    if (ws && ws.readyState === WebSocket.OPEN) return
 
     console.log('[SharedWorker] Connecting to WebSocket:', WS_URL)
     
@@ -54,11 +59,11 @@ function connectWebSocket() {
             broadcast({ type: 'connected' })
             
             // resubscribe to all active channels
-            activeSubscriptions.forEach(channel => {
+            activeSubscriptions.forEach(subscription => {
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
                         method: 'subscribe',
-                        subscription: { type: channel }
+                        subscription: subscription
                     }))
                 }
             })
@@ -71,15 +76,63 @@ function connectWebSocket() {
                 const data = JSON.parse(event.data)
                 connectionStats.messagesReceived++
                 
-                // hyperliquid sends data with 'channel' field for subscription responses
-                // for allMids, it's { channel: 'allMids', data: {...} }
-                const channel = data.channel || 'allMids'
+                // parse hyperliquid message types
+                let channel = null
+                let messageData = data
                 
-                broadcast({ 
-                    type: 'message', 
-                    channel: channel,
-                    data: data
-                })
+                if (data.channel) {
+                    channel = data.channel
+                    messageData = data.data || data
+                } else if (data.method === 'subscription') {
+                    channel = data.subscription?.type
+                } else if (data.data) {
+                    const d = data.data
+                    if (d.allMids !== undefined) {
+                        channel = 'allMids'
+                        messageData = d
+                    } else if (d.levels !== undefined) {
+                        channel = 'l2Book'
+                        messageData = d
+                    } else if (Array.isArray(d) && d.length > 0) {
+                        if (d[0].px !== undefined && d[0].sz !== undefined) {
+                            channel = 'trades'
+                            messageData = d
+                        } else if (d[0].t !== undefined && d[0].o !== undefined) {
+                            channel = 'candle'
+                            messageData = d
+                        }
+                    }
+                }
+                
+                // route to subscribers
+                if (channel) {
+                    const subscribers = []
+                    ports.forEach((portData, portId) => {
+                        portData.subscriptions.forEach(subChannel => {
+                            if (subChannel === channel || subChannel.startsWith(channel + ':')) subscribers.push(portId)
+                        })
+                    })
+                    
+                    subscribers.forEach(portId => {
+                        const portData = ports.get(portId)
+                        if (portData) {
+                            sendToPort(portData.port, {
+                                type: 'message',
+                                channel: channel,
+                                data: messageData
+                            }, portId)
+                        }
+                    })
+                    
+                    if (subscribers.length === 0 && channel !== 'subscription') {
+                        console.log(`[SharedWorker] No subscribers for channel: ${channel}`)
+                    }
+                } else if (!data.method) {
+                    broadcast({ 
+                        type: 'message',
+                        data: data
+                    })
+                }
             } catch (error) {
                 console.error('[SharedWorker] Error parsing message:', error)
                 broadcast({ 
@@ -101,10 +154,7 @@ function connectWebSocket() {
             ws = null
             stopHeartbeat()
             
-            // reconnect if we still have connected ports
-            if (ports.length > 0) {
-                scheduleReconnect()
-            }
+            if (ports.size > 0) scheduleReconnect() // reconnect if ports exist
         }
     } catch (error) {
         console.error('[SharedWorker] Failed to create WebSocket:', error)
@@ -130,80 +180,118 @@ function stopHeartbeat() {
     }
 }
 
-// reconnection logic
+// Port health monitoring
+function startPortHealthCheck() {
+    stopPortHealthCheck()
+    portHealthTimer = setInterval(() => {
+        const now = Date.now()
+        const deadPorts = []
+        
+        ports.forEach(({ lastPing }, portId) => {
+            if (now - lastPing > PORT_PING_TIMEOUT) {
+                console.log(`[SharedWorker] Port ${portId} is not responding, removing`)
+                deadPorts.push(portId)
+            }
+        })
+        
+        deadPorts.forEach(portId => handlePortDisconnect(portId))
+    }, PORT_PING_INTERVAL)
+}
+
+function stopPortHealthCheck() {
+    if (!portHealthTimer) return
+    clearInterval(portHealthTimer)
+    portHealthTimer = null
+}
+
 function scheduleReconnect() {
     if (reconnectTimer) return
     
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null
-        if (ports.length > 0) {
+        if (ports.size > 0) {
             connectWebSocket()
         }
     }, RECONNECT_DELAY)
 }
 
-// handle port (tab) disconnection
-function handlePortDisconnect(port) {
-    const index = ports.indexOf(port)
-    if (index !== -1) {
-        ports.splice(index, 1)
-        console.log(`[SharedWorker] Port disconnected. Active ports: ${ports.length}`)
-        
-        // clean up subscriptions for this port
-        const subscriptions = portSubscriptions.get(port)
-        if (subscriptions) {
-            subscriptions.forEach(channel => {
-                // check if any other port is still subscribed
-                let stillSubscribed = false
-                portSubscriptions.forEach((subs, p) => {
-                    if (p !== port && subs.has(channel)) {
-                        stillSubscribed = true
-                    }
-                })
-                
-                // unsubscribe if no other port needs this channel
-                if (!stillSubscribed) {
-                    activeSubscriptions.delete(channel)
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            method: 'unsubscribe',
-                            subscription: { type: channel }
-                        }))
-                    }
-                }
+// handle port disconnection
+function handlePortDisconnect(portId) {
+    const portData = ports.get(portId)
+    if (!portData) return
+    
+    ports.delete(portId)
+    console.log(`[SharedWorker] Port ${portId} disconnected. Active ports: ${ports.size}`)
+    
+    // clean up subscriptions
+    if (portData.subscriptions) {
+        portData.subscriptions.forEach(channel => {
+            let stillSubscribed = false
+            ports.forEach(({ subscriptions }) => {
+                if (subscriptions.has(channel)) stillSubscribed = true
             })
-            portSubscriptions.delete(port)
-        }
-        
-        // close websocket if no more ports
-        if (ports.length === 0) {
-            console.log('[SharedWorker] No more ports, closing WebSocket')
-            if (ws) {
-                ws.close()
-                ws = null
+            
+            if (!stillSubscribed) { // unsubscribe if no port needs it
+                const subscription = activeSubscriptions.get(channel)
+                if (subscription && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        method: 'unsubscribe',
+                        subscription: subscription
+                    }))
+                }
+                activeSubscriptions.delete(channel)
             }
-            stopHeartbeat()
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer)
-                reconnectTimer = null
-            }
-        }
+        })
+    }
+    
+    if (ports.size === 0) { // close if no ports
+        console.log('[SharedWorker] No more ports, closing WebSocket')
+        if (ws) { ws.close(); ws = null }
+        stopHeartbeat()
+        stopPortHealthCheck()
+        if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
     }
 }
+
+// Cleanup on worker termination
+self.addEventListener('beforeunload', () => {
+    console.log('[SharedWorker] Worker terminating, cleaning up...')
+    if (ws) {
+        ws.close()
+        ws = null
+    }
+    stopHeartbeat()
+    stopPortHealthCheck()
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+    }
+})
 
 // handle new connection from a tab
 self.onconnect = (event) => {
     const port = event.ports[0]
+    const portId = ++portIdCounter
     
-    console.log(`[SharedWorker] New port connected. Total ports: ${ports.length + 1}`)
-    ports.push(port)
+    console.log(`[SharedWorker] New port ${portId} connected. Total ports: ${ports.size + 1}`)
     
-    // initialize subscription tracking for this port
-    portSubscriptions.set(port, new Set())
+    // Store port with metadata
+    ports.set(portId, {
+        port: port,
+        subscriptions: new Set(),
+        lastPing: Date.now()
+    })
+    
+    // Start the port immediately to avoid race conditions
+    port.start()
     
     // handle messages from this port
     port.onmessage = (event) => {
         const message = event.data
+        const portData = ports.get(portId)
+        if (portData) {
+            portData.lastPing = Date.now()
+        }
         
         switch (message.type) {
             case 'getStats':
@@ -211,7 +299,7 @@ self.onconnect = (event) => {
                     type: 'stats',
                     data: {
                         ...connectionStats,
-                        tabsConnected: ports.length,
+                        tabsConnected: ports.size,
                         activeSubscriptions: activeSubscriptions.size,
                         wsState: ws ? ws.readyState : 'no connection',
                         wsStateText: ws ? 
@@ -220,7 +308,7 @@ self.onconnect = (event) => {
                              ws.readyState === WebSocket.CLOSING ? 'closing' : 'closed') 
                             : 'no connection'
                     }
-                })
+                }, portId)
                 break
                 
             case 'send':
@@ -230,82 +318,89 @@ self.onconnect = (event) => {
                     sendToPort(port, { 
                         type: 'error', 
                         data: 'WebSocket not connected' 
-                    })
+                    }, portId)
                 }
                 break
                 
             case 'subscribe':
-                if (message.channel) {
-                    // track subscription for this port
-                    portSubscriptions.get(port)?.add(message.channel)
+                if (message.subscription) {
+                    const channel = message.subscription.type
+                    const portData = ports.get(portId)
                     
-                    // subscribe if not already subscribed
-                    if (!activeSubscriptions.has(message.channel)) {
-                        activeSubscriptions.add(message.channel)
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                method: 'subscribe',
-                                subscription: { type: message.channel }
-                            }))
+                    if (portData) {
+                        // track subscription for this port
+                        portData.subscriptions.add(channel)
+                        
+                        // subscribe if not already subscribed
+                        if (!activeSubscriptions.has(channel)) {
+                            activeSubscriptions.set(channel, message.subscription)
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    method: 'subscribe',
+                                    subscription: message.subscription
+                                }))
+                            }
                         }
+                        sendToPort(port, { 
+                            type: 'subscribed', 
+                            channel: channel 
+                        }, portId)
                     }
-                    sendToPort(port, { 
-                        type: 'subscribed', 
-                        channel: message.channel 
-                    })
                 }
                 break
                 
             case 'unsubscribe':
                 if (message.channel) {
-                    // remove subscription for this port
-                    portSubscriptions.get(port)?.delete(message.channel)
-                    
-                    // check if any other port still needs this channel
-                    let stillNeeded = false
-                    portSubscriptions.forEach(subs => {
-                        if (subs.has(message.channel)) {
-                            stillNeeded = true
+                    const portData = ports.get(portId)
+                    if (portData) {
+                        // remove subscription for this port
+                        portData.subscriptions.delete(message.channel)
+                        
+                        // check if any other port still needs this channel
+                        let stillNeeded = false
+                        ports.forEach(({ subscriptions }) => {
+                            if (subscriptions.has(message.channel)) {
+                                stillNeeded = true
+                            }
+                        })
+                        
+                        // unsubscribe if no port needs it
+                        if (!stillNeeded) {
+                            const subscription = activeSubscriptions.get(message.channel)
+                            if (subscription && ws && ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    method: 'unsubscribe',
+                                    subscription: subscription
+                                }))
+                            }
+                            activeSubscriptions.delete(message.channel)
                         }
-                    })
-                    
-                    // unsubscribe if no port needs it
-                    if (!stillNeeded) {
-                        activeSubscriptions.delete(message.channel)
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({
-                                method: 'unsubscribe',
-                                subscription: { type: message.channel }
-                            }))
-                        }
+                        sendToPort(port, { 
+                            type: 'unsubscribed', 
+                            channel: message.channel 
+                        }, portId)
                     }
-                    sendToPort(port, { 
-                        type: 'unsubscribed', 
-                        channel: message.channel 
-                    })
                 }
                 break
                 
             case 'ping':
                 // respond to ping to check if worker is alive
-                sendToPort(port, { type: 'message', data: 'pong' })
+                sendToPort(port, { type: 'pong' }, portId)
                 break
         }
     }
     
-    // handle port disconnection
-    port.addEventListener('messageerror', () => handlePortDisconnect(port))
-    
-    // start the port
-    port.start()
+    // Send initial port ID to client
+    sendToPort(port, { type: 'init', portId: portId }, portId)
     
     // connect websocket on first port connection
-    if (ports.length === 1) {
+    if (ports.size === 1) {
         connectWebSocket()
+        startPortHealthCheck()
     } else if (ws && ws.readyState === WebSocket.OPEN) {
         // notify new port of current connection state
-        sendToPort(port, { type: 'connected' })
+        sendToPort(port, { type: 'connected' }, portId)
     } else {
-        sendToPort(port, { type: 'disconnected' })
+        sendToPort(port, { type: 'disconnected' }, portId)
     }
 }

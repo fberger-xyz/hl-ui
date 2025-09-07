@@ -18,6 +18,7 @@ const INTER_TIGHT_FONT = Inter_Tight({
     variable: '--font-inter-tight',
     display: 'swap',
 })
+
 import { Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { ErrorBoundary } from 'react-error-boundary'
@@ -93,21 +94,7 @@ export const metadata: Metadata = {
     },
 
     // additional metadata
-    keywords: [
-        'hyperliquid',
-        'defi',
-        'liquidity',
-        'vault',
-        'delta-neutral',
-        'LP',
-        'yield',
-        'APR',
-        'funding',
-        'hyperswap',
-        'hyperevm',
-        'crypto',
-        'web3',
-    ],
+    keywords: [],
     authors: [{ name: APP_METADATA.AUTHOR.name, url: APP_METADATA.AUTHOR.url }],
     category: 'finance',
     robots: {

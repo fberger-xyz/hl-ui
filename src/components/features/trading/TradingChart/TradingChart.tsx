@@ -55,7 +55,7 @@ function TradingChart({ className = 'h-full w-full' }: TradingChartProps = {}) {
     const volumeSeriesRef = useRef<any>(null)
     const priceLineRef = useRef<any>(null)
     const [currentInterval, setCurrentInterval] = useState<CandleInterval>('1m')
-    const [chartType, setChartType] = useState<ChartType>('candlestick')
+    const [chartType] = useState<ChartType>('candlestick')
 
     // get symbol directly from store
     const currentSymbol = useUiStore((state) => state.currentSymbol)
@@ -356,7 +356,8 @@ function TradingChart({ className = 'h-full w-full' }: TradingChartProps = {}) {
                     </div>
 
                     {/* Chart type selector */}
-                    <div className="flex gap-1" role="group" aria-label="Chart type">
+                    {/* TODO: make it cleaner later */}
+                    {/* <div className="flex gap-1" role="group" aria-label="Chart type">
                         <button
                             onClick={() => setChartType('candlestick')}
                             className={cn(
@@ -384,7 +385,7 @@ function TradingChart({ className = 'h-full w-full' }: TradingChartProps = {}) {
                             title="Area Chart">
                             Area
                         </button>
-                    </div>
+                    </div> */}
                 </div>
 
                 <div className="flex items-center gap-2 text-xs">{error && <span className="text-hlt-12">{error}</span>}</div>

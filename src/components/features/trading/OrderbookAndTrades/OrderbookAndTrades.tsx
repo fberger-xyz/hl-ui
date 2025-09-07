@@ -71,14 +71,14 @@ function OrderbookAndTrades() {
                 <div className="w10 flex items-center justify-end">
                     <Dropdown
                         trigger={
-                            <button className="ml-auto flex cursor-pointer items-center justify-center pr-2 text-hlt-17 hover:text-hlt-4">
+                            <button type="button" className="ml-auto flex cursor-pointer items-center justify-center pr-2 text-hlt-17 hover:text-hlt-4">
                                 <IconWrapper id={IconIds.DOTS_VERTICAL} className="size-5" />
                             </button>
                         }>
                         <div className="flex flex-col gap-2 py-2">
                             {['Tab', 'Stacked', 'Large'].map((item) => (
-                                <button key={item} className="flex cursor-pointer px-2 text-hlt-17 hover:text-hlt-2">
-                                    <p>{item}</p>
+                                <button type="button" key={item} className="flex cursor-pointer px-2 text-hlt-17 hover:text-hlt-2">
+                                    {item}
                                 </button>
                             ))}
                         </div>
