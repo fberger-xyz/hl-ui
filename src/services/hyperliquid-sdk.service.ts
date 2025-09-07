@@ -1,20 +1,8 @@
 // note: have a look to https://github.com/nktkas/hyperliquid
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import * as hl from '@nktkas/hyperliquid'
 import { Wallet } from 'ethers'
-
-export interface HyperliquidOrder {
-    asset: string
-    isBuy: boolean
-    size: string
-    price?: string
-    isMarket?: boolean
-    reduceOnly?: boolean
-    postOnly?: boolean
-    ioc?: boolean
-}
+import type { AssetInfo, HyperliquidOrder } from '@/types/hyperliquid.types'
 
 export class HyperliquidSDKService {
     private static instance: HyperliquidSDKService
@@ -44,11 +32,12 @@ export class HyperliquidSDKService {
             })
             await this.loadAssetMetadata()
         } catch (error) {
-            console.error(error)
-            throw error
+            const message = error instanceof Error ? error.message : 'Failed to initialize with signer'
+            throw new Error(message)
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     async initializeWithEthersSigner(signer: any): Promise<void> {
         try {
             this.exchangeClient = new hl.ExchangeClient({
@@ -57,8 +46,8 @@ export class HyperliquidSDKService {
             })
             await this.loadAssetMetadata()
         } catch (error) {
-            console.error(error)
-            throw error
+            const message = error instanceof Error ? error.message : 'Failed to initialize with Ethers signer'
+            throw new Error(message)
         }
     }
 
@@ -67,12 +56,12 @@ export class HyperliquidSDKService {
             const [meta] = await this.infoClient.metaAndAssetCtxs()
 
             // build asset index map
-            meta.universe.forEach((asset: any, index: number) => {
+            meta.universe.forEach((asset: AssetInfo, index: number) => {
                 this.assetIndices.set(asset.name, index)
             })
         } catch (error) {
-            console.error(error)
-            throw error
+            const message = error instanceof Error ? error.message : 'Failed to load asset metadata'
+            throw new Error(message)
         }
     }
 
@@ -82,63 +71,65 @@ export class HyperliquidSDKService {
         return index
     }
 
-    async getUserState(address: string): Promise<any | null> {
+    async getUserState(address: string): Promise<unknown | null> {
         try {
             return await this.infoClient.clearinghouseState({ user: address as `0x${string}` })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return null
         }
     }
 
-    async getOpenOrders(address: string): Promise<any[]> {
+    async getOpenOrders(address: string): Promise<unknown[]> {
         try {
             return await this.infoClient.openOrders({ user: address as `0x${string}` })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async getUserFills(address: string): Promise<any[]> {
+    async getUserFills(address: string): Promise<unknown[]> {
         try {
             return await this.infoClient.userFills({ user: address as `0x${string}` })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async getOrderbook(symbol: string): Promise<any> {
+    async getOrderbook(symbol: string): Promise<unknown> {
         try {
             return await this.infoClient.l2Book({ coin: symbol })
-        } catch (error) {
-            console.error(error)
-            return { levels: [[], []] }
+        } catch {
+            // console.error(error)
+            return { coin: symbol, levels: [[], []], time: Date.now() }
         }
     }
 
-    async getCandles(symbol: string, interval: string = '1m'): Promise<any[]> {
+    async getCandles(symbol: string, interval: string = '1m'): Promise<unknown[]> {
         try {
             return await this.infoClient.candleSnapshot({
                 coin: symbol,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 interval: interval as any,
                 startTime: Date.now() - 24 * 60 * 60 * 1000, // last 24h
                 endTime: Date.now(),
             })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async placeOrder(order: HyperliquidOrder): Promise<any> {
+    async placeOrder(order: HyperliquidOrder): Promise<unknown> {
         // guard: no exchange client
         if (!this.exchangeClient) throw new Error('Exchange client not initialized. Please connect wallet first.')
 
         try {
             const assetIndex = this.getAssetIndex(order.asset)
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const hlOrder: any = {
                 a: assetIndex,
                 b: order.isBuy,
@@ -155,12 +146,12 @@ export class HyperliquidSDKService {
                 grouping: 'na',
             })
         } catch (error) {
-            console.error(error)
-            throw error
+            const message = error instanceof Error ? error.message : 'Failed to place order'
+            throw new Error(message)
         }
     }
 
-    async cancelOrder(orderId: string, asset: string): Promise<any> {
+    async cancelOrder(orderId: string, asset: string): Promise<unknown> {
         // guard: no exchange client
         if (!this.exchangeClient) throw new Error('Exchange client not initialized')
 
@@ -175,12 +166,12 @@ export class HyperliquidSDKService {
                 ],
             })
         } catch (error) {
-            console.error(error)
-            throw error
+            const message = error instanceof Error ? error.message : 'Failed to cancel order'
+            throw new Error(message)
         }
     }
 
-    async cancelAllOrders(asset?: string): Promise<any> {
+    async cancelAllOrders(asset?: string): Promise<unknown> {
         // guard: no exchange client
         if (!this.exchangeClient) throw new Error('Exchange client not initialized')
 
@@ -200,21 +191,21 @@ export class HyperliquidSDKService {
             // cancel all assets
             return await this.exchangeClient.cancel({ cancels: [] })
         } catch (error) {
-            console.error(error)
-            throw error
+            const message = error instanceof Error ? error.message : 'Failed to cancel all orders'
+            throw new Error(message)
         }
     }
 
-    async getMarkets(): Promise<Array<any & { index: number; symbol: string }>> {
+    async getMarkets(): Promise<Array<AssetInfo & { index: number; symbol: string }>> {
         try {
             const meta = await this.infoClient.meta()
-            return meta.universe.map((asset: any, index: number) => ({
+            return meta.universe.map((asset: AssetInfo, index: number) => ({
                 ...asset,
                 index,
                 symbol: asset.name,
             }))
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
@@ -222,80 +213,83 @@ export class HyperliquidSDKService {
     async getAllMids(): Promise<Record<string, string>> {
         try {
             return await this.infoClient.allMids()
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return {}
         }
     }
 
-    async getUserPortfolio(address: string): Promise<any | null> {
+    async getUserPortfolio(address: string): Promise<unknown | null> {
         try {
             return await this.infoClient.portfolio({ user: address as `0x${string}` })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return null
         }
     }
 
-    async getHistoricalOrders(address: string): Promise<any[]> {
+    async getHistoricalOrders(address: string): Promise<unknown[]> {
         try {
             return await this.infoClient.historicalOrders({ user: address as `0x${string}` })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async getUserFunding(address: string, startTime?: number, endTime?: number): Promise<any[]> {
+    async getUserFunding(address: string, startTime?: number, endTime?: number): Promise<unknown[]> {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const params: any = { user: address as `0x${string}` }
             if (startTime !== undefined) params.startTime = startTime
             if (endTime !== undefined) params.endTime = endTime
             return await this.infoClient.userFunding(params)
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async getTwapHistory(address: string): Promise<any[]> {
+    async getTwapHistory(address: string): Promise<unknown[]> {
         try {
             return await this.infoClient.twapHistory({ user: address as `0x${string}` })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async getUserTwapSliceFills(address: string): Promise<any[]> {
+    async getUserTwapSliceFills(address: string): Promise<unknown[]> {
         try {
             return await this.infoClient.userTwapSliceFills({ user: address as `0x${string}` })
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async getUserFillsByTime(address: string, startTime?: number, endTime?: number): Promise<any[]> {
+    async getUserFillsByTime(address: string, startTime?: number, endTime?: number): Promise<unknown[]> {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const params: any = { user: address as `0x${string}` }
             if (startTime !== undefined) params.startTime = startTime
             if (endTime !== undefined) params.endTime = endTime
             return await this.infoClient.userFillsByTime(params)
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }
 
-    async getUserNonFundingLedgerUpdates(address: string, startTime?: number, endTime?: number): Promise<any[]> {
+    async getUserNonFundingLedgerUpdates(address: string, startTime?: number, endTime?: number): Promise<unknown[]> {
         try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const params: any = { user: address as `0x${string}` }
             if (startTime !== undefined) params.startTime = startTime
             if (endTime !== undefined) params.endTime = endTime
             return await this.infoClient.userNonFundingLedgerUpdates(params)
-        } catch (error) {
-            console.error(error)
+        } catch {
+            // console.error(error)
             return []
         }
     }

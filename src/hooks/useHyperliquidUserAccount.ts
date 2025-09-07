@@ -1,7 +1,5 @@
 'use client'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAccount } from 'wagmi'
@@ -15,17 +13,17 @@ import type {
     FundingPayment,
     OrderHistory,
     UserAccountData,
-    ClearinghouseState,
     PortfolioData,
 } from '@/types/user-account.types'
+import type { OpenOrder as HLOpenOrder, UserFill, ClearinghouseState as HLClearinghouseState } from '@/types/hyperliquid.types'
 
 interface UseHyperliquidUserAccountOptions {
     enabled?: boolean
     refetchInterval?: number
 }
 
-// helper function to parse clearinghouse state into balances and positions
-function parseClearinghouseState(state: ClearinghouseState | null): {
+// parse clearinghouse state to ui types
+function parseClearinghouseState(state: HLClearinghouseState | null): {
     balances: Balance[]
     positions: Position[]
 } {
@@ -63,8 +61,8 @@ function parseClearinghouseState(state: ClearinghouseState | null): {
                     pnlPercentage: typeof pos.returnOnEquity === 'number' ? pos.returnOnEquity : parseFloat(pos.returnOnEquity || '0'),
                     liqPrice: pos.liquidationPx || undefined,
                     margin: pos.marginUsed || '0',
-                    funding: pos.cumFunding?.allTime || '0',
-                    leverage: pos.maxLeverage,
+                    funding: pos.funding?.cumFunding?.allTime || '0',
+                    leverage: undefined,
                 })
             }
         })
@@ -74,27 +72,27 @@ function parseClearinghouseState(state: ClearinghouseState | null): {
 }
 
 // helper to parse open orders
-function parseOpenOrders(orders: any[]): OpenOrder[] {
+function parseOpenOrders(orders: HLOpenOrder[]): OpenOrder[] {
     return orders.map((order) => ({
-        id: order.oid || order.id,
+        id: order.oid,
         time: order.timestamp || Date.now(),
-        type: order.orderType || 'limit',
+        type: 'limit',
         coin: order.coin,
         side: order.side === 'B' ? 'buy' : 'sell',
         size: order.sz,
-        filledSize: order.filledSz || '0',
+        filledSize: '0',
         originalSize: order.origSz || order.sz,
-        price: order.limitPx || order.px,
-        value: (parseFloat(order.sz) * parseFloat(order.limitPx || order.px || '0')).toString(),
-        reduceOnly: order.reduceOnly || false,
-        postOnly: order.postOnly || false,
-        triggerCondition: order.triggerCondition,
-        tpsl: order.tpsl,
+        price: order.limitPx,
+        value: (parseFloat(order.sz) * parseFloat(order.limitPx)).toString(),
+        reduceOnly: false,
+        postOnly: false,
+        triggerCondition: undefined,
+        tpsl: undefined,
     }))
 }
 
 // helper to parse trade history
-function parseTrades(fills: any[]): Trade[] {
+function parseTrades(fills: UserFill[]): Trade[] {
     return fills.map((fill) => ({
         time: fill.time,
         coin: fill.coin,
@@ -103,16 +101,17 @@ function parseTrades(fills: any[]): Trade[] {
         size: fill.sz,
         value: (parseFloat(fill.sz) * parseFloat(fill.px)).toString(),
         fee: fill.fee || '0',
-        feeRate: fill.feeRate,
-        closedPnl: fill.closedPnl,
-        orderType: fill.orderType,
-        orderId: fill.oid,
+        feeRate: undefined,
+        closedPnl: fill.closedPnl ? parseFloat(fill.closedPnl) : undefined,
+        orderType: undefined,
+        orderId: fill.oid.toString(),
     }))
 }
 
 // helper to parse funding history
-function parseFundingHistory(funding: any[]): FundingPayment[] {
-    return funding.map((f) => ({
+function parseFundingHistory(funding: unknown[]): FundingPayment[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return funding.map((f: any) => ({
         time: f.time,
         coin: f.coin,
         size: f.ntlPos,
@@ -123,8 +122,9 @@ function parseFundingHistory(funding: any[]): FundingPayment[] {
 }
 
 // helper to parse order history
-function parseOrderHistory(orders: any[]): OrderHistory[] {
-    return orders.map((order) => ({
+function parseOrderHistory(orders: unknown[]): OrderHistory[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return orders.map((order: any) => ({
         time: order.timestamp || order.time,
         type: order.orderType || 'limit',
         coin: order.coin,
@@ -143,8 +143,9 @@ function parseOrderHistory(orders: any[]): OrderHistory[] {
 }
 
 // helper to parse twap orders
-function parseTwapOrders(twaps: any[]): TwapOrder[] {
-    return twaps.map((twap) => ({
+function parseTwapOrders(twaps: unknown[]): TwapOrder[] {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return twaps.map((twap: any) => ({
         id: twap.id,
         coin: twap.coin,
         side: twap.isBuy ? 'buy' : 'sell',
@@ -183,7 +184,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
         queryKey: ['hyperliquid', 'openOrders', address],
         queryFn: async () => {
             if (!sdk || !address) return []
-            return await sdk.getOpenOrders(address)
+            return sdk.getOpenOrders(address)
         },
         enabled: enabled && isConnected && isInitialized && !!address,
         refetchInterval: 3000,
@@ -197,7 +198,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
             if (!sdk || !address) return []
             const endTime = Date.now()
             const startTime = endTime - 7 * 24 * 60 * 60 * 1000 // 7 days
-            return await sdk.getUserFillsByTime(address, startTime, endTime)
+            return sdk.getUserFillsByTime(address, startTime, endTime)
         },
         enabled: enabled && isConnected && isInitialized && !!address,
         refetchInterval: 30000,
@@ -211,7 +212,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
             if (!sdk || !address) return []
             const endTime = Date.now()
             const startTime = endTime - 30 * 24 * 60 * 60 * 1000 // 30 days
-            return await sdk.getUserFunding(address, startTime, endTime)
+            return sdk.getUserFunding(address, startTime, endTime)
         },
         enabled: enabled && isConnected && isInitialized && !!address,
         refetchInterval: 30000,
@@ -223,7 +224,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
         queryKey: ['hyperliquid', 'orderHistory', address],
         queryFn: async () => {
             if (!sdk || !address) return []
-            return await sdk.getHistoricalOrders(address)
+            return sdk.getHistoricalOrders(address)
         },
         enabled: enabled && isConnected && isInitialized && !!address,
         refetchInterval: 30000,
@@ -235,7 +236,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
         queryKey: ['hyperliquid', 'twap', address],
         queryFn: async () => {
             if (!sdk || !address) return []
-            return await sdk.getTwapHistory(address)
+            return sdk.getTwapHistory(address)
         },
         enabled: enabled && isConnected && isInitialized && !!address,
         refetchInterval: 10000,
@@ -247,19 +248,19 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
         queryKey: ['hyperliquid', 'portfolio', address],
         queryFn: async () => {
             if (!sdk || !address) return null
-            return await sdk.getUserPortfolio(address)
+            return sdk.getUserPortfolio(address)
         },
         enabled: enabled && isConnected && isInitialized && !!address,
         refetchInterval: 60000,
         staleTime: 30000,
     })
 
-    // parse and combine all data
+    // combine all account data
     const accountData: UserAccountData = {
-        ...parseClearinghouseState(clearinghouseQuery.data),
-        openOrders: parseOpenOrders(openOrdersQuery.data || []),
+        ...parseClearinghouseState((clearinghouseQuery.data || null) as HLClearinghouseState | null),
+        openOrders: parseOpenOrders((openOrdersQuery.data || []) as HLOpenOrder[]),
         twapOrders: parseTwapOrders(twapQuery.data || []),
-        tradeHistory: parseTrades(tradesQuery.data || []),
+        tradeHistory: parseTrades((tradesQuery.data || []) as UserFill[]),
         fundingHistory: parseFundingHistory(fundingQuery.data || []),
         orderHistory: parseOrderHistory(orderHistoryQuery.data || []),
     }
@@ -284,7 +285,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
                 throw new Error('SDK not initialized')
             }
             await sdk.cancelOrder(orderId, coin)
-            await refreshOrders()
+            refreshOrders()
         },
         [sdk, isInitialized, refreshOrders],
     )
@@ -296,7 +297,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
                 throw new Error('SDK not initialized')
             }
             await sdk.cancelAllOrders(coin)
-            await refreshOrders()
+            refreshOrders()
         },
         [sdk, isInitialized, refreshOrders],
     )

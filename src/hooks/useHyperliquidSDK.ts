@@ -1,7 +1,5 @@
 'use client'
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { useEffect, useState } from 'react'
 import { usePrivy } from '@privy-io/react-auth'
 import { useWalletClient } from 'wagmi'
@@ -28,6 +26,7 @@ export function useHyperliquidSDK() {
 
                 // If we have wallet client, initialize with signer for write operations
                 if (authenticated && walletClient) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     const provider = new BrowserProvider(walletClient as any)
                     const signer = await provider.getSigner()
                     await sdkInstance.initializeWithEthersSigner(signer)
@@ -59,7 +58,7 @@ export function useHyperliquidSDK() {
 
 export function useHyperliquidUserData(address?: string) {
     const { sdk, isInitialized } = useHyperliquidSDK()
-    const [userState, setUserState] = useState<Record<string, unknown> | null>(null)
+    const [userState, setUserState] = useState<unknown | null>(null)
     const [openOrders, setOpenOrders] = useState<unknown[]>([])
     const [fills, setFills] = useState<unknown[]>([])
     const [isLoading, setIsLoading] = useState(false)

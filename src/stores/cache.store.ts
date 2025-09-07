@@ -1,7 +1,6 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { L2BookData, Trade, HyperliquidCandle } from '@/types/hyperliquid.types'
 
 interface CachedData<T> {
     data: T
@@ -10,19 +9,19 @@ interface CachedData<T> {
 
 interface CacheState {
     // cache storage
-    orderbookCache: Record<string, CachedData<any>>
-    tradesCache: Record<string, CachedData<any>>
-    candleCache: Record<string, CachedData<any>>
+    orderbookCache: Record<string, CachedData<L2BookData>>
+    tradesCache: Record<string, CachedData<Trade[]>>
+    candleCache: Record<string, CachedData<HyperliquidCandle[]>>
 
     // cache methods
-    getCachedOrderbook: (symbol: string) => any | null
-    setCachedOrderbook: (symbol: string, data: any) => void
+    getCachedOrderbook: (symbol: string) => L2BookData | null
+    setCachedOrderbook: (symbol: string, data: L2BookData) => void
 
-    getCachedTrades: (symbol: string) => any | null
-    setCachedTrades: (symbol: string, data: any) => void
+    getCachedTrades: (symbol: string) => Trade[] | null
+    setCachedTrades: (symbol: string, data: Trade[]) => void
 
-    getCachedCandles: (key: string) => any | null
-    setCachedCandles: (key: string, data: any) => void
+    getCachedCandles: (key: string) => HyperliquidCandle[] | null
+    setCachedCandles: (key: string, data: HyperliquidCandle[]) => void
 
     // cleanup old cache entries
     cleanExpiredCache: () => void
@@ -105,7 +104,7 @@ export const useCacheStore = create<CacheState>()(
                             }
                             return acc
                         },
-                        {} as Record<string, CachedData<any>>,
+                        {} as Record<string, CachedData<L2BookData>>,
                     )
 
                     // clean expired trades cache
@@ -116,7 +115,7 @@ export const useCacheStore = create<CacheState>()(
                             }
                             return acc
                         },
-                        {} as Record<string, CachedData<any>>,
+                        {} as Record<string, CachedData<Trade[]>>,
                     )
 
                     // clean expired candle cache
@@ -127,7 +126,7 @@ export const useCacheStore = create<CacheState>()(
                             }
                             return acc
                         },
-                        {} as Record<string, CachedData<any>>,
+                        {} as Record<string, CachedData<HyperliquidCandle[]>>,
                     )
 
                     return { orderbookCache, tradesCache, candleCache }

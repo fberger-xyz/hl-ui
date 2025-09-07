@@ -1,5 +1,6 @@
 'use client'
 
+// todo: finish implementing this component
 import { Slider, SliderProps } from '@heroui/slider'
 import { cn } from '@/utils'
 

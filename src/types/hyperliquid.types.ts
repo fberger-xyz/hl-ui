@@ -172,6 +172,17 @@ export interface MarginSummary {
 // order types
 // ============================================
 
+export interface HyperliquidOrder {
+    asset: string
+    isBuy: boolean
+    size: string
+    price?: string
+    isMarket?: boolean
+    reduceOnly?: boolean
+    postOnly?: boolean
+    ioc?: boolean
+}
+
 export interface OpenOrder {
     coin: string
     limitPx: string

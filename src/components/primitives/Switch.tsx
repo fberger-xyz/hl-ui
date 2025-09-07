@@ -29,7 +29,7 @@ export default function Switch({
 
     return (
         <div className={cn('relative flex rounded-lg bg-hlb-16 p-0.5', className)}>
-            {/* Sliding background */}
+            {/* sliding background */}
             <div
                 className={cn('absolute inset-y-[2px] rounded-md transition-all duration-300 ease-out', isLeft ? leftBgColor : rightBgColor)}
                 style={{
@@ -38,24 +38,24 @@ export default function Switch({
                 }}
             />
 
-            {/* Left button */}
+            {/* left button */}
             <button
                 className={cn(
-                    'relative z-10 flex flex-1 items-center justify-center rounded-md px-2 transition-colors',
+                    'relative z-10 flex flex-1 items-center justify-center truncate rounded-md px-2 transition-colors',
                     isLeft ? leftTextColor : 'text-hlt-17 hover:text-hlt-1',
                 )}
                 onClick={() => onChange(leftLabel)}>
-                <p className="truncate">{leftLabel}</p>
+                {leftLabel}
             </button>
 
-            {/* Right button */}
+            {/* right button */}
             <button
                 className={cn(
-                    'relative z-10 flex flex-1 items-center justify-center rounded-md px-2 transition-colors',
+                    'relative z-10 flex flex-1 items-center justify-center truncate rounded-md px-2 transition-colors',
                     !isLeft ? rightTextColor : 'text-hlt-17 hover:text-hlt-1',
                 )}
                 onClick={() => onChange(rightLabel)}>
-                <p className="truncate">{rightLabel}</p>
+                {rightLabel}
             </button>
         </div>
     )

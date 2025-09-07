@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 // throttle function calls to limit update frequency
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function throttle<T extends (...args: any[]) => void>(fn: T, delay: number): (...args: Parameters<T>) => void {
     let lastCall = 0
     let timeout: NodeJS.Timeout | null = null
@@ -38,6 +37,7 @@ export function throttle<T extends (...args: any[]) => void>(fn: T, delay: numbe
 }
 
 // throttle with requestAnimationFrame for smooth ui updates
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function throttleRaf<T extends (...args: any[]) => void>(fn: T): (...args: Parameters<T>) => void {
     let rafId: number | null = null
     let lastArgs: Parameters<T> | null = null

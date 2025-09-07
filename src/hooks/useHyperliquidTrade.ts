@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useHyperliquidSDK } from '@/hooks/useHyperliquidSDK'
-import { HyperliquidOrder } from '@/services/hyperliquid-sdk.service'
+import type { HyperliquidOrder } from '@/types/hyperliquid.types'
 import toast from 'react-hot-toast'
 
 export function useHyperliquidTrade() {
