@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
@@ -47,15 +48,11 @@ type ChartType = 'candlestick' | 'line' | 'area'
 function TradingChart({ className = 'h-full w-full' }: TradingChartProps = {}) {
     const containerRef = useRef<HTMLDivElement>(null)
     const chartRef = useRef<ReturnType<typeof createChart> | null>(null)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const candleSeriesRef = useRef<any>(null)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const lineSeriesRef = useRef<any>(null)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const areaSeriesRef = useRef<any>(null)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const volumeSeriesRef = useRef<any>(null)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const priceLineRef = useRef<any>(null)
     const [currentInterval, setCurrentInterval] = useState<CandleInterval>('1m')
     const [chartType, setChartType] = useState<ChartType>('candlestick')

@@ -44,7 +44,7 @@ export default function Footer(props: { className?: string }) {
                         )}
                         <p
                             className={cn(
-                                'text-xs font-medium transition-colors',
+                                'truncate text-xs font-medium transition-colors',
                                 wsStatus === 'connected' && 'text-hlt-5',
                                 wsStatus === 'connecting' && 'text-hlt-9',
                                 wsStatus === 'disconnected' && 'text-hlt-11',
