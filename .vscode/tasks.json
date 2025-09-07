@@ -1,0 +1,44 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Prettier: Format All Files",
+            "type": "shell",
+            "command": "pnpm",
+            "args": ["prettier:fix"],
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "ESLint: Fix All Files",
+            "type": "shell",
+            "command": "pnpm",
+            "args": ["lint"],
+            "group": "none",
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": ["$eslint-stylish"]
+        },
+        {
+            "label": "Lint & Format: Fix All",
+            "type": "shell",
+            "command": "pnpm",
+            "args": ["lint:fix"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": ["$eslint-stylish"]
+        }
+    ]
+}

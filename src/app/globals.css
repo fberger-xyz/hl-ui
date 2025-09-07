@@ -1,0 +1,194 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* notes:
+** 
+** below is verbose but it works well for light/dark/any-other-theme mode
+** 
+** #colors in comment below comes from app.hyperliquid.xyz/trade page > open console > cmd + shift + p > show CSS overview
+** 
+ */
+
+:root {
+    /* background - 27 colors */
+    --hl-background-0: 166 93% 79%; /* #97FBE4 */
+    --hl-background-1: 172 59% 57%; /* #50d2c1 */
+    --hl-background-2: 168 5% 60%; /* #949e9c */
+    --hl-background-3: 170 67% 40%; /* #22ab94 */
+    --hl-background-4: 348 78% 68%; /* #ed7088 */
+    --hl-background-5: 162 69% 39%; /* #1fa67d */
+    --hl-background-6: 170 88% 32% / 0.2; /* #0a998133 */
+    --hl-background-7: 202 6% 36%; /* #575e62 */
+    --hl-background-8: 170 51% 24%; /* #1e5d52 */
+    --hl-background-9: 227 9% 29%; /* #434651 */
+    --hl-background-10: 350 46% 31%; /* #732a36 */
+    --hl-background-11: 172 50% 18%; /* #17453f */
+    --hl-background-12: 224 12% 24%; /* #363a45 */
+    --hl-background-13: 227 13% 21%; /* #2e313c */
+    --hl-background-14: 220 66% 23%; /* #142e61 */
+    --hl-background-15: 0 0% 19%; /* #303030 */
+    --hl-background-16: 201 15% 18%; /* #273035 */
+    --hl-background-17: 224 15% 19%; /* #2a2e39 */
+    --hl-background-18: 180 55% 13%; /* #0f3333 */
+    --hl-background-19: 201 21% 13%; /* #1b2429 */
+    --hl-background-20: 172 70% 9%; /* #072723 */
+    --hl-background-21: 199 35% 9%; /* #0f1a1f */
+    --hl-background-22: 199 35% 9% / 0.5; /* #0f1a1f80 */
+    --hl-background-23: 199 35% 9% / 0.8; /* #0f1a1fcc */
+    --hl-background-24: 196 33% 9%; /* #0f1a1e */
+    --hl-background-25: 224 28% 10%; /* #131722 */
+    --hl-background-26: 0 0% 0% / 0.3; /* #0000004d */
+
+    /* text - 24 colors */
+    --hl-text-1: 0 0% 100%; /* #ffffff */
+    --hl-text-2: 173 80% 98%; /* #f6fefd */
+    --hl-text-3: 222 50% 96%; /* #f0f3fa */
+    --hl-text-4: 166 93% 79%; /* #97fbe4 */
+    --hl-text-5: 158 10% 84%; /* #d2dad7 */
+    --hl-text-6: 212 89% 86%; /* #bbd9fb */
+    --hl-text-7: 224 14% 84%; /* #d1d4dc */
+    --hl-text-8: 172 59% 57%; /* #50d2c1 */
+    --hl-text-9: 36 100% 50%; /* #ff9800 */
+    --hl-text-10: 201 20% 68%; /* #9db2bd */
+    --hl-text-11: 168 5% 60%; /* #949e9c */
+    --hl-text-12: 348 78% 68%; /* #ed7088 */
+    --hl-text-13: 162 69% 39%; /* #1fa67d */
+    --hl-text-14: 170 63% 39%; /* #25a48f */
+    --hl-text-15: 355 91% 65%; /* #f7525f */
+    --hl-text-16: 1 83% 63%; /* #ef5350 */
+    --hl-text-17: 226 6% 55%; /* #868993 */
+    --hl-text-18: 170 90% 32%; /* #089981 */
+    --hl-text-19: 0 0% 50%; /* #808080 */
+    --hl-text-20: 227 6% 50%; /* #787b86 */
+    --hl-text-21: 171 89% 7%; /* #02231e */
+    --hl-text-22: 199 35% 9% / 0.5; /* #0f1a1f80 */
+    --hl-text-23: 199 35% 9% / 0.8; /* #0f1a1fcc */
+    --hl-text-24: 225 50% 3%; /* #04060c */
+
+    /* fill - 9 colors */
+    --hl-fill-1: 0 0% 100%; /* #ffffff */
+    --hl-fill-2: 173 80% 98%; /* #f6fefd */
+    --hl-fill-3: 224 14% 84%; /* #d1d4dc */
+    --hl-fill-4: 39 100% 64%; /* #ffb648 */
+    --hl-fill-5: 172 59% 57%; /* #50d2c1 */
+    --hl-fill-6: 226 6% 55%; /* #868993 */
+    --hl-fill-7: 170 90% 32%; /* #089981 */
+    --hl-fill-8: 199 35% 9%; /* #0f1a1f */
+    --hl-fill-9: 0 0% 0%; /* #000000 */
+
+    /* border - 12 colors */
+    --hl-border-1: 0 0% 100% / 0.1; /* #ffffff1a */
+    --hl-border-2: 172 59% 57%; /* #50d2c1 */
+    --hl-border-3: 36 100% 50%; /* #ff9800 */
+    --hl-border-4: 226 6% 55%; /* #868993 */
+    --hl-border-5: 227 9% 29%; /* #434651 */
+    --hl-border-6: 0 0% 24%; /* #3e3e3e */
+    --hl-border-7: 224 12% 24%; /* #363a45 */
+    --hl-border-8: 220 66% 23%; /* #142e61 */
+    --hl-border-9: 0 0% 19%; /* #303030 */
+    --hl-border-10: 201 15% 18%; /* #273035 */
+    --hl-border-11: 199 35% 9%; /* #0f1a1f */
+    --hl-border-12: 0 0% 0%; /* #000000 */
+}
+
+.dark {
+    /* background - 27 colors */
+    --hl-background-0: 166 93% 79%; /* #97FBE4 */
+    --hl-background-1: 172 59% 57%; /* #50d2c1 */
+    --hl-background-2: 168 5% 60%; /* #949e9c */
+    --hl-background-3: 170 67% 40%; /* #22ab94 */
+    --hl-background-4: 348 78% 68%; /* #ed7088 */
+    --hl-background-5: 162 69% 39%; /* #1fa67d */
+    --hl-background-6: 170 88% 32% / 0.2; /* #0a998133 */
+    --hl-background-7: 202 6% 36%; /* #575e62 */
+    --hl-background-8: 170 51% 24%; /* #1e5d52 */
+    --hl-background-9: 227 9% 29%; /* #434651 */
+    --hl-background-10: 350 46% 31%; /* #732a36 */
+    --hl-background-11: 172 50% 18%; /* #17453f */
+    --hl-background-12: 224 12% 24%; /* #363a45 */
+    --hl-background-13: 227 13% 21%; /* #2e313c */
+    --hl-background-14: 220 66% 23%; /* #142e61 */
+    --hl-background-15: 0 0% 19%; /* #303030 */
+    --hl-background-16: 201 15% 18%; /* #273035 */
+    --hl-background-17: 224 15% 19%; /* #2a2e39 */
+    --hl-background-18: 180 55% 13%; /* #0f3333 */
+    --hl-background-19: 201 21% 13%; /* #1b2429 */
+    --hl-background-20: 172 70% 9%; /* #072723 */
+    --hl-background-21: 199 35% 9%; /* #0f1a1f */
+    --hl-background-22: 199 35% 9% / 0.5; /* #0f1a1f80 */
+    --hl-background-23: 199 35% 9% / 0.8; /* #0f1a1fcc */
+    --hl-background-24: 196 33% 9%; /* #0f1a1e */
+    --hl-background-25: 224 28% 10%; /* #131722 */
+    --hl-background-26: 0 0% 0% / 0.3; /* #0000004d */
+
+    /* text - 24 colors */
+    --hl-text-1: 0 0% 100%; /* #ffffff */
+    --hl-text-2: 173 80% 98%; /* #f6fefd */
+    --hl-text-3: 222 50% 96%; /* #f0f3fa */
+    --hl-text-4: 166 93% 79%; /* #97fbe4 */
+    --hl-text-5: 158 10% 84%; /* #d2dad7 */
+    --hl-text-6: 212 89% 86%; /* #bbd9fb */
+    --hl-text-7: 224 14% 84%; /* #d1d4dc */
+    --hl-text-8: 172 59% 57%; /* #50d2c1 */
+    --hl-text-9: 36 100% 50%; /* #ff9800 */
+    --hl-text-10: 201 20% 68%; /* #9db2bd */
+    --hl-text-11: 168 5% 60%; /* #949e9c */
+    --hl-text-12: 348 78% 68%; /* #ed7088 */
+    --hl-text-13: 162 69% 39%; /* #1fa67d */
+    --hl-text-14: 170 63% 39%; /* #25a48f */
+    --hl-text-15: 355 91% 65%; /* #f7525f */
+    --hl-text-16: 1 83% 63%; /* #ef5350 */
+    --hl-text-17: 226 6% 55%; /* #868993 */
+    --hl-text-18: 170 90% 32%; /* #089981 */
+    --hl-text-19: 0 0% 50%; /* #808080 */
+    --hl-text-20: 227 6% 50%; /* #787b86 */
+    --hl-text-21: 171 89% 7%; /* #02231e */
+    --hl-text-22: 199 35% 9% / 0.5; /* #0f1a1f80 */
+    --hl-text-23: 199 35% 9% / 0.8; /* #0f1a1fcc */
+    --hl-text-24: 225 50% 3%; /* #04060c */
+
+    /* fill - 9 colors */
+    --hl-fill-1: 0 0% 100%; /* #ffffff */
+    --hl-fill-2: 173 80% 98%; /* #f6fefd */
+    --hl-fill-3: 224 14% 84%; /* #d1d4dc */
+    --hl-fill-4: 39 100% 64%; /* #ffb648 */
+    --hl-fill-5: 172 59% 57%; /* #50d2c1 */
+    --hl-fill-6: 226 6% 55%; /* #868993 */
+    --hl-fill-7: 170 90% 32%; /* #089981 */
+    --hl-fill-8: 199 35% 9%; /* #0f1a1f */
+    --hl-fill-9: 0 0% 0%; /* #000000 */
+
+    /* border - 12 colors */
+    --hl-border-1: 0 0% 100% / 0.1; /* #ffffff1a */
+    --hl-border-2: 172 59% 57%; /* #50d2c1 */
+    --hl-border-3: 36 100% 50%; /* #ff9800 */
+    --hl-border-4: 226 6% 55%; /* #868993 */
+    --hl-border-5: 227 9% 29%; /* #434651 */
+    --hl-border-6: 0 0% 24%; /* #3e3e3e */
+    --hl-border-7: 224 12% 24%; /* #363a45 */
+    --hl-border-8: 220 66% 23%; /* #142e61 */
+    --hl-border-9: 0 0% 19%; /* #303030 */
+    --hl-border-10: 201 15% 18%; /* #273035 */
+    --hl-border-11: 199 35% 9%; /* #0f1a1f */
+    --hl-border-12: 0 0% 0%; /* #000000 */
+}
+
+@layer utilities {
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+}
+
+.skeleton-loading {
+    @apply animate-pulse rounded-lg bg-hlb-19;
+}
+
+nextjs-portal {
+    display: none;
+}
