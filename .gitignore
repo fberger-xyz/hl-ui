@@ -45,6 +45,7 @@ src/generated/
 /specs
 /docs
 /preferences
+/WEBSOCKET_DATA_FLOW.md
 
 # claude
 CLAUDE.md

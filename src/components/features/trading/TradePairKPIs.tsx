@@ -4,22 +4,61 @@ import TextWithTooltip from '@/components/primitives/Tooltip/TextWithTooltip'
 import { useMarketStore } from '@/stores/market.store'
 import { cn, formatAmount } from '@/utils'
 import numeral from 'numeral'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useActiveAssetContext } from '@/hooks/useActiveAssetContext'
+import { subscriptionManager } from '@/services/subscription-manager'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
 
 function TradePairKPIs() {
     const selectedMarket = useMarketStore((state) => state.selectedMarket)
     const marketKPIs = useMarketStore((state) => state.marketKPIs)
+    const updateMarketKPIs = useMarketStore((state) => state.updateMarketKPIs)
+    const unsubscribeRef = useRef<(() => void) | null>(null)
 
-    // subscribe to active asset context for real-time kpis
+    // subscribe to active asset context
     useActiveAssetContext()
 
-    // calculate values - move before any conditional returns
-    const markPx = marketKPIs?.markPx || Number(selectedMarket?.px || '0')
-    const prevPx = marketKPIs?.prevDayPx || markPx * (1 - (selectedMarket?.changePercent24h || 0) / 100)
-    const change24hAbs = marketKPIs?.change24hAbs || markPx - prevPx
+    // subscribe to allMids for price
+    useEffect(() => {
+        if (!selectedMarket?.symbol) return
 
-    // update document title with real-time price
+        // cleanup previous subscription
+        if (unsubscribeRef.current) {
+            unsubscribeRef.current()
+            unsubscribeRef.current = null
+        }
+
+        // subscribe to all mids
+        unsubscribeRef.current = subscriptionManager.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.ALL_MIDS,
+            },
+            (data) => {
+                const midsData = data as { mids: Record<string, string> }
+                if (midsData?.mids && selectedMarket?.symbol) {
+                    const price = midsData.mids[selectedMarket.symbol]
+                    if (price) {
+                        updateMarketKPIs({ markPx: parseFloat(price) })
+                    }
+                }
+            },
+        )
+
+        return () => {
+            if (unsubscribeRef.current) {
+                unsubscribeRef.current()
+                unsubscribeRef.current = null
+            }
+        }
+    }, [selectedMarket?.symbol, updateMarketKPIs])
+
+    // calculate values
+    const markPx = marketKPIs?.markPx || Number(selectedMarket?.px || '0')
+    const prevPx = marketKPIs?.prevDayPx || Number(selectedMarket?.px || '0') * (1 - (selectedMarket?.changePercent24h || 0) / 100)
+    const change24hAbs = markPx - prevPx
+    const change24hPercent = prevPx > 0 ? ((markPx - prevPx) / prevPx) * 100 : 0
+
+    // update document title
     useEffect(() => {
         if (!selectedMarket) return
         const price = numeral(markPx || selectedMarket.px || 0).format('0,0.00')
@@ -27,7 +66,7 @@ function TradePairKPIs() {
         document.title = `${price} | ${symbol} | Hyperliquid`
     }, [selectedMarket, markPx])
 
-    // show skeleton loader while market data is loading - after all hooks
+    // show skeleton loader
     if (!selectedMarket) {
         return (
             <section className="no-scrollbar flex grow gap-8 overflow-x-auto overflow-y-hidden">
@@ -44,11 +83,11 @@ function TradePairKPIs() {
     const displayData = {
         markPx,
         oraclePx: marketKPIs?.oraclePx || Number(selectedMarket.px || '0'),
-        change24h: selectedMarket.changePercent24h || 0,
+        change24h: change24hPercent,
         change24hAbs,
         dayNtlVlm: Number(selectedMarket.dayNtlVlm || '0'),
-        openInterest: Number(selectedMarket.openInterest || '0'),
-        funding: parseFloat(selectedMarket.funding || '0'),
+        openInterest: marketKPIs?.openInterest || Number(selectedMarket.openInterest || '0'),
+        funding: marketKPIs?.funding || parseFloat(selectedMarket.funding || '0'),
     }
 
     // different kpis for spot vs perp markets

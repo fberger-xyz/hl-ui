@@ -1,4 +1,4 @@
-// note: have a look to https://github.com/nktkas/hyperliquid
+// see: https://github.com/nktkas/hyperliquid
 
 import * as hl from '@nktkas/hyperliquid'
 import { Wallet } from 'ethers'
@@ -12,12 +12,7 @@ export class HyperliquidSDKService {
     private exchangeClient: hl.ExchangeClient | null = null
     private assetIndices: Map<string, number> = new Map()
 
-    // dedup: prevent concurrent user data fetches
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private pendingUserDataRequests: Map<string, Promise<any>> = new Map()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    private userPortfolioCache: Map<string, { data: any; timestamp: number }> = new Map()
-    private readonly USER_DATA_CACHE_TTL = 10000 // 10 seconds
+    // removed: websocket replaces caching
 
     private constructor() {
         this.transport = new hl.HttpTransport({
@@ -111,21 +106,17 @@ export class HyperliquidSDKService {
         }
     }
 
+    // deprecated: use websocket l2Book
     async getOrderbook(symbol: string): Promise<hl.Book> {
-        try {
-            const book = await this.infoClient.l2Book({ coin: symbol })
-            return book
-        } catch (error) {
-            logger.error('Failed to get orderbook:', error)
-            // return empty book in compatible format
-            return {
-                coin: symbol,
-                levels: [[], []],
-                time: Date.now(),
-            } as unknown as hl.Book
-        }
+        logger.warn('getOrderbook is deprecated - use WebSocket l2Book subscription')
+        return {
+            coin: symbol,
+            levels: [[], []],
+            time: Date.now(),
+        } as unknown as hl.Book
     }
 
+    // keep: needed for initial chart
     async getCandles(symbol: string, interval: CandleInterval = '1m'): Promise<hl.Candle[]> {
         try {
             const candles = await this.infoClient.candleSnapshot({
@@ -221,79 +212,37 @@ export class HyperliquidSDKService {
         }
     }
 
+    // deprecated: use websocket webData2
     async getMarkets(): Promise<Array<AssetInfo & { index: number; symbol: string }>> {
+        logger.warn('getMarkets is deprecated - use WebSocket webData2 subscription')
+        return []
+    }
+
+    // deprecated: use websocket allMids
+    async getAllMids(): Promise<Record<string, string>> {
+        logger.warn('getAllMids is deprecated - use WebSocket allMids subscription')
+        return {}
+    }
+
+    // deprecated: use websocket webData2
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async getUserPortfolio(address: string): Promise<hl.PortfolioPeriods | null> {
+        logger.warn('getUserPortfolio is deprecated - use WebSocket webData2 subscription')
+        return null
+    }
+
+    // fetch historical orders
+    async getHistoricalOrders(address: string): Promise<hl.OrderStatus<hl.FrontendOrder>[]> {
         try {
-            const meta = await this.infoClient.meta()
-            return meta.universe.map((asset: AssetInfo, index: number) => ({
-                ...asset,
-                index,
-                symbol: asset.name,
-            }))
-        } catch {
-            // logger.error(error)
+            const orders = await this.infoClient.historicalOrders({ user: address as `0x${string}` })
+            return orders
+        } catch (error) {
+            logger.error('Failed to get historical orders:', error)
             return []
         }
     }
 
-    async getAllMids(): Promise<Record<string, string>> {
-        try {
-            const mids = await this.infoClient.allMids()
-            return mids
-        } catch (error) {
-            logger.error('Failed to get all mids:', error)
-            return {}
-        }
-    }
-
-    async getUserPortfolio(address: string): Promise<hl.PortfolioPeriods | null> {
-        const cacheKey = `portfolio:${address}`
-
-        // check cache
-        const cachedPortfolio = this.userPortfolioCache.get(cacheKey)
-        if (cachedPortfolio && Date.now() - cachedPortfolio.timestamp < this.USER_DATA_CACHE_TTL) return cachedPortfolio.data
-
-        // check pending request
-        const pendingPortfolioRequest = this.pendingUserDataRequests.get(cacheKey)
-        if (pendingPortfolioRequest) return pendingPortfolioRequest
-
-        // create new portfolio request
-        const portfolioRequestPromise = this.infoClient
-            .portfolio({ user: address as `0x${string}` })
-            .then((portfolioData) => {
-                this.userPortfolioCache.set(cacheKey, { data: portfolioData, timestamp: Date.now() })
-                return portfolioData
-            })
-            .catch((error) => {
-                logger.error('Failed to get user portfolio:', error)
-                return null
-            })
-            .finally(() => this.pendingUserDataRequests.delete(cacheKey))
-
-        this.pendingUserDataRequests.set(cacheKey, portfolioRequestPromise)
-        return portfolioRequestPromise
-    }
-
-    async getHistoricalOrders(address: string): Promise<hl.OrderStatus<hl.FrontendOrder>[]> {
-        const cacheKey = `historicalOrders:${address}`
-
-        // check pending request
-        const pendingHistoricalOrdersRequest = this.pendingUserDataRequests.get(cacheKey)
-        if (pendingHistoricalOrdersRequest) return pendingHistoricalOrdersRequest
-
-        // create new historical orders request
-        const historicalOrdersPromise = this.infoClient
-            .historicalOrders({ user: address as `0x${string}` })
-            .then((ordersData) => ordersData)
-            .catch((error) => {
-                logger.error('Failed to get historical orders:', error)
-                return []
-            })
-            .finally(() => this.pendingUserDataRequests.delete(cacheKey))
-
-        this.pendingUserDataRequests.set(cacheKey, historicalOrdersPromise)
-        return historicalOrdersPromise
-    }
-
+    // fetch historical funding
     async getUserFunding(address: string, startTime?: number, endTime?: number): Promise<hl.UserFundingUpdate[]> {
         try {
             const params: hl.UserFundingParameters = {
@@ -309,40 +258,25 @@ export class HyperliquidSDKService {
         }
     }
 
+    // deprecated: use websocket twapHistory
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async getTwapHistory(address: string): Promise<hl.TwapHistory[]> {
-        try {
-            const history = await this.infoClient.twapHistory({ user: address as `0x${string}` })
-            return history
-        } catch (error) {
-            logger.error('Failed to get TWAP history:', error)
-            return []
-        }
+        logger.warn('getTwapHistory is deprecated - use WebSocket twapHistory subscription')
+        return []
     }
 
+    // deprecated: use websocket twapSliceFills
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async getUserTwapSliceFills(address: string): Promise<hl.TwapSliceFill[]> {
-        try {
-            const fills = await this.infoClient.userTwapSliceFills({ user: address as `0x${string}` })
-            return fills
-        } catch (error) {
-            logger.error('Failed to get TWAP slice fills:', error)
-            return []
-        }
+        logger.warn('getUserTwapSliceFills is deprecated - use WebSocket twapSliceFills subscription')
+        return []
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async getUserFillsByTime(address: string, startTime?: number, endTime?: number): Promise<any[]> {
-        try {
-            const params: hl.UserFillsByTimeParameters = {
-                user: address as `0x${string}`,
-                startTime: startTime ?? 0,
-                endTime: endTime ?? Date.now(),
-            }
-            const fills = await this.infoClient.userFillsByTime(params)
-            return fills
-        } catch (error) {
-            logger.error('Failed to get user fills by time:', error)
-            return []
-        }
+    // deprecated: use websocket userFills
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async getUserFillsByTime(address: string, startTime?: number, endTime?: number): Promise<unknown[]> {
+        logger.warn('getUserFillsByTime is deprecated - use WebSocket userFills subscription')
+        return []
     }
 
     async getUserNonFundingLedgerUpdates(address: string, startTime?: number, endTime?: number): Promise<hl.UserNonFundingLedgerUpdate[]> {

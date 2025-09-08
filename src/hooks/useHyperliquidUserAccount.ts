@@ -17,7 +17,7 @@ import type {
     UserAccountData,
     PortfolioData,
 } from '@/types/user-account.types'
-import type { OpenOrder as HLOpenOrder, UserFill, ClearinghouseState as HLClearinghouseState, WsOrder, WebData2 } from '@/types/hyperliquid.types'
+import type { UserFill, ClearinghouseState as HLClearinghouseState, WsOrder, WebData2 } from '@/types/hyperliquid.types'
 import {
     isWebData2Message,
     isWebSocketOrderArrayMessage,
@@ -42,14 +42,18 @@ function parseClearinghouseState(state: HLClearinghouseState | null): {
 
     // extract account balance
     if (state.marginSummary) {
-        balances.push({
+        const balance = {
             coin: 'USDC',
             total: state.marginSummary.accountValue,
             available: state.withdrawable || '0',
             usdcValue: state.marginSummary.accountValue,
             pnl: 0,
             roe: 0,
-        })
+        }
+        balances.push(balance)
+        logger.info('Parsed balance from clearinghouse state:', balance)
+    } else {
+        logger.warn('No marginSummary in clearinghouse state:', state)
     }
 
     // extract positions
@@ -100,25 +104,7 @@ function parseWebData2(data: WebData2 | null): {
     return { balances, positions }
 }
 
-// helper to parse open orders
-function parseOpenOrders(orders: HLOpenOrder[]): OpenOrder[] {
-    return orders.map((order) => ({
-        id: order.oid,
-        time: order.timestamp || Date.now(),
-        type: 'limit',
-        coin: order.coin,
-        side: parseSide(order.side),
-        size: order.sz,
-        filledSize: '0',
-        originalSize: order.origSz || order.sz,
-        price: order.limitPx,
-        value: calculateValue(order.sz, order.limitPx),
-        reduceOnly: false,
-        postOnly: false,
-        triggerCondition: undefined,
-        tpsl: undefined,
-    }))
-}
+// removed: unused after websocket migration
 
 // parse ws orders to open orders
 function parseWsOrders(orders: WsOrder[]): OpenOrder[] {
@@ -240,64 +226,49 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
 
     // refs for cleanup
     const unsubscribeRefs = useRef<(() => void)[]>([])
-    const fetchPromiseRef = useRef<Promise<void> | null>(null)
 
-    // fetch user-specific data not available via websocket
-    const fetchInitialUserData = useCallback(() => {
-        // guard: require sdk and address
-        if (!sdk || !isInitialized || !address) return
+    // fetch initial account state and historical data via REST
+    const fetchInitialUserData = useCallback(async () => {
+        if (!sdk || !address) return
 
-        // dedup: return existing promise if already fetching
-        if (fetchPromiseRef.current) return fetchPromiseRef.current
-
-        const fetchPromise = (async () => {
-            try {
-                setIsLoading(true)
-                setError(null)
-
-                // fetch non-websocket data: portfolio, historical orders, user state, fills, funding
-                const [portfolio, history, userState, fills, funding] = await Promise.all([
-                    sdk.getUserPortfolio(address),
-                    sdk.getHistoricalOrders(address),
-                    sdk.getUserState(address), // fetch clearinghouse state
-                    sdk.getUserFills(address),
-                    sdk.getUserFunding(address),
-                ])
-
-                // set initial data
-                setPortfolio(portfolio as PortfolioData)
-                setOrderHistory(parseOrderHistory(history))
-                setTrades(parseTrades(fills))
-                setFundingPayments(parseFundingHistory(funding))
-
-                // if we got user state, parse and set it
-                if (userState) {
-                    logger.info('Got userState from API:', userState)
-                    // parse to check for positions
-                    const parsed = parseClearinghouseState(userState as unknown as HLClearinghouseState)
-                    logger.info('Parsed positions from userState:', parsed.positions)
-                    // set webData with clearinghouse state
-                    setWebData({ clearinghouseState: userState } as WebData2)
-                }
-
-                // note: other data comes from websocket subscriptions:
-                // - state via webData2
-                // - open orders via orderUpdates
-                // - fills via userFills
-                // - funding via userFundings
-                // - twap via userTwapHistory
-            } catch (err) {
-                logger.error('Error fetching initial user data:', err)
-                setError(err as Error)
-            } finally {
-                setIsLoading(false)
-                fetchPromiseRef.current = null // clear the promise ref
+        try {
+            // fetch initial account state to show immediately
+            const userState = await sdk.getUserState(address)
+            if (userState) {
+                logger.info('Got initial userState from REST:', userState)
+                // set initial webData with clearinghouse state
+                setWebData({ clearinghouseState: userState } as WebData2)
             }
-        })()
 
-        fetchPromiseRef.current = fetchPromise
-        return fetchPromise
-    }, [sdk, isInitialized, address])
+            // fetch historical data (websocket only provides updates)
+            const [userFills, userFunding, historicalOrders] = await Promise.all([
+                sdk.getUserFills(address),
+                sdk.getUserFunding(address),
+                sdk.getHistoricalOrders(address),
+            ])
+
+            // set historical data
+            if (userFills && userFills.length > 0) {
+                logger.info('Got user fills from REST:', userFills.length)
+                setTrades(parseTrades(userFills))
+            }
+
+            if (userFunding && userFunding.length > 0) {
+                logger.info('Got funding history from REST:', userFunding.length)
+                setFundingPayments(parseFundingHistory(userFunding))
+            }
+
+            if (historicalOrders && historicalOrders.length > 0) {
+                logger.info('Got order history from REST:', historicalOrders.length)
+                setOrderHistory(parseOrderHistory(historicalOrders))
+            }
+        } catch (err) {
+            logger.warn('Could not fetch initial data, waiting for WebSocket:', err)
+        }
+
+        // websocket will provide real-time updates
+        setIsLoading(false)
+    }, [sdk, address])
 
     useEffect(() => {
         // guard: require address and sdk (read-only is ok)
@@ -315,9 +286,7 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
             return
         }
 
-        // wait for sdk to be available
-        if (!sdk || !isInitialized) return
-
+        // fetch initial state while websocket connects
         fetchInitialUserData()
 
         // subscribe to websocket updates
@@ -481,7 +450,10 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
     // combine all account data
     const parsedWebData = parseWebData2(webData)
 
-    // log positions for debugging
+    // log account data for debugging
+    if (parsedWebData.balances.length > 0) {
+        logger.info('Account has balances:', parsedWebData.balances)
+    }
     if (parsedWebData.positions.length > 0) {
         logger.info('Account has positions:', parsedWebData.positions)
     }
@@ -495,27 +467,18 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
         orderHistory,
     }
 
-    // refresh balance data
+    // websocket provides real-time updates
     const refreshBalances = useCallback(() => {
-        fetchInitialUserData()
-    }, [fetchInitialUserData])
+        logger.debug('Balances are updated via WebSocket in real-time')
+    }, [])
 
-    const refreshOrders = useCallback(async () => {
-        // orders update automatically via websocket
-        // but we can fetch if needed
-        if (sdk && address) {
-            try {
-                const orders = await sdk.getOpenOrders(address)
-                setOpenOrders(parseOpenOrders(orders as HLOpenOrder[]))
-            } catch (err) {
-                logger.error('Error refreshing orders:', err)
-            }
-        }
-    }, [sdk, address])
+    const refreshOrders = useCallback(() => {
+        logger.debug('Orders are updated via WebSocket in real-time')
+    }, [])
 
     const refreshAllUserData = useCallback(() => {
-        fetchInitialUserData()
-    }, [fetchInitialUserData])
+        logger.debug('All user data is updated via WebSocket in real-time')
+    }, [])
 
     // cancel order function
     const cancelOrder = useCallback(
