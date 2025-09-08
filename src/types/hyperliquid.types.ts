@@ -246,6 +246,9 @@ export interface SubscriptionOptions {
     coin?: string
     interval?: string
     user?: string
+    nSigFigs?: number // optional: number of significant figures for l2Book
+    mantissa?: number // optional: mantissa bits for l2Book
+    aggregateByTime?: boolean // optional: for userFills subscription
 }
 
 export type SubscriptionCallback = (data: unknown) => void
@@ -276,6 +279,51 @@ export interface WebSocketL2Data {
 
 export interface AllMidsData {
     mids: Record<string, string> // coin -> mid price
+}
+
+// ============================================
+// websocket user data types
+// ============================================
+
+export interface WsOrder {
+    order: {
+        coin: string
+        side: 'B' | 'A'
+        limitPx: string
+        sz: string
+        oid: number
+        timestamp: number
+        origSz: string
+        cloid?: string
+    }
+    status: string
+    statusTimestamp: number
+}
+
+export interface WsUserFills {
+    isSnapshot?: boolean
+    user: string
+    fills: UserFill[]
+}
+
+export interface WsUserFundings {
+    isSnapshot?: boolean
+    user: string
+    fundings: Array<{
+        time: number
+        coin: string
+        usdc: string
+        szi: string
+        fundingRate: string
+    }>
+}
+
+export interface WebData2 {
+    clearinghouseState?: unknown
+    assetCtxs?: unknown[]
+    metaAndAssetCtxs?: unknown
+    pendingWithdrawals?: unknown[]
+    // add more fields as needed
 }
 
 // ============================================

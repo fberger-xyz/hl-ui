@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
-import { useCacheStore } from '@/stores/cache.store'
+import { hyperliquidWS } from '@/services/hyperliquid-websocket'
 import type { CandleInterval, HyperliquidCandle, WebSocketCandleData, ChartData } from '@/types/hyperliquid.types'
 import { HyperliquidWebSocketSubscriptionType } from '@/enums/hyperliquid.enum'
 
@@ -13,14 +12,7 @@ interface UseHyperliquidChartOptions {
 export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: UseHyperliquidChartOptions): ChartData & {
     changeInterval: (newInterval: CandleInterval) => void
 } {
-    const { getCachedCandles, setCachedCandles } = useCacheStore()
-    const cacheKey = `${symbol}:${interval}`
-
-    // initialize with cached data for instant display
-    const [candles, setCandles] = useState<HyperliquidCandle[]>(() => {
-        const cached = getCachedCandles(cacheKey)
-        return cached || []
-    })
+    const [candles, setCandles] = useState<HyperliquidCandle[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [isConnected, setIsConnected] = useState(false)
     const [error, setError] = useState<string | null>(null)
@@ -28,24 +20,22 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
 
     const candleMapRef = useRef(new Map<number, HyperliquidCandle>())
     const unsubscribeRef = useRef<(() => void) | null>(null)
-    const previousSymbolRef = useRef(symbol)
+    const lastUpdateTimeRef = useRef(0)
+    const symbolRef = useRef(symbol)
+    const intervalRef = useRef(currentInterval)
 
-    const fetchCandles = useCallback(
+    // keep refs updated
+    symbolRef.current = symbol
+    intervalRef.current = currentInterval
+
+    const fetchInitialCandlesFromRest = useCallback(
         async (sym: string, int: CandleInterval) => {
             try {
-                // show cached data immediately while fetching fresh
-                const cachedData = getCachedCandles(`${sym}:${int}`)
-                if (cachedData && cachedData.length > 0) {
-                    setCandles(cachedData)
-                    setIsLoading(false) // don't show spinner if we have cached data
-                } else {
-                    setIsLoading(true)
-                }
+                setIsLoading(true)
                 setError(null)
 
                 const endTime = Date.now()
                 const startTime = endTime - lookbackHours * 60 * 60 * 1000
-
                 const requestBody = {
                     req: {
                         coin: sym,
@@ -57,19 +47,14 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
 
                 const data = await hyperliquidWS.fetchInfo('candleSnapshot', requestBody)
                 if (!data || !Array.isArray(data)) {
-                    console.error('Invalid candle data format:', data)
                     throw new Error('Invalid candle data format')
                 }
 
-                // map api response to our format (api uses uppercase field names)
+                // normalize candle data
                 const normalizedCandles: HyperliquidCandle[] = data
                     .map((candle: Record<string, string | number>) => {
                         const timestamp = Number(candle.t || candle.T)
-                        // validate timestamp
-                        if (isNaN(timestamp) || timestamp <= 0) {
-                            console.warn('Invalid candle timestamp:', candle)
-                            return null
-                        }
+                        if (isNaN(timestamp) || timestamp <= 0) return null
                         return {
                             t: timestamp,
                             o: String(candle.o || candle.O),
@@ -81,13 +66,13 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
                     })
                     .filter((candle): candle is HyperliquidCandle => candle !== null)
 
+                // rebuild candle map
                 candleMapRef.current.clear()
-                normalizedCandles.forEach((candle: HyperliquidCandle) => {
+                normalizedCandles.forEach((candle) => {
                     candleMapRef.current.set(candle.t, candle)
                 })
 
                 setCandles(normalizedCandles)
-                setCachedCandles(cacheKey, normalizedCandles) // cache for instant load
             } catch (err) {
                 console.error('Error fetching candles:', err)
                 setError(err instanceof Error ? err.message : 'Failed to fetch candles')
@@ -95,68 +80,71 @@ export function useHyperliquidChart({ symbol, interval, lookbackHours = 24 }: Us
                 setIsLoading(false)
             }
         },
-        [lookbackHours, getCachedCandles, setCachedCandles, cacheKey],
+        [lookbackHours],
     )
 
-    const handleCandleUpdate = useCallback(
-        (data: unknown) => {
-            // guard: invalid data
-            if (!data || typeof data !== 'object' || data === null) return
+    // throttle to 100ms for consistent updates
+    const handleCandleUpdateFromWebSocket = useCallback((data: unknown) => {
+        const now = Date.now()
+        // throttle: 100ms between updates
+        if (now - lastUpdateTimeRef.current < 100) return
+        lastUpdateTimeRef.current = now
 
-            const candleData = data as WebSocketCandleData['data']
-            if (!candleData.t || !candleData.o || !candleData.h || !candleData.l || !candleData.c || !candleData.v) return
+        if (!data || typeof data !== 'object') return
 
-            const newCandle: HyperliquidCandle = {
-                t: candleData.t,
-                o: candleData.o,
-                h: candleData.h,
-                l: candleData.l,
-                c: candleData.c,
-                v: candleData.v,
-            }
+        const candleData = data as WebSocketCandleData['data']
+        if (!candleData.t || !candleData.o || !candleData.h || !candleData.l || !candleData.c || !candleData.v) return
 
-            // always update the candle map with latest data
-            candleMapRef.current.set(newCandle.t, newCandle)
+        const newCandle: HyperliquidCandle = {
+            t: candleData.t,
+            o: candleData.o,
+            h: candleData.h,
+            l: candleData.l,
+            c: candleData.c,
+            v: candleData.v,
+        }
 
-            // create new sorted array for state update
-            const sortedCandles = Array.from(candleMapRef.current.values()).sort((a, b) => a.t - b.t)
-            setCandles(sortedCandles)
-            setCachedCandles(`${symbol}:${currentInterval}`, sortedCandles) // cache updates
-            setIsConnected(true)
-        },
-        [symbol, currentInterval, setCachedCandles],
-    )
+        // update or add candle
+        candleMapRef.current.set(newCandle.t, newCandle)
+
+        // sort and update state
+        const sortedCandles = Array.from(candleMapRef.current.values()).sort((a, b) => a.t - b.t)
+        setCandles(sortedCandles)
+        setIsConnected(true)
+        setIsLoading(false)
+        setError(null)
+    }, [])
 
     const changeInterval = useCallback((newInterval: CandleInterval) => {
         setCurrentInterval(newInterval)
+        // clear existing data when interval changes
+        candleMapRef.current.clear()
+        setCandles([])
     }, [])
 
     useEffect(() => {
-        // clear candle map when symbol changes
-        if (previousSymbolRef.current !== symbol) {
-            candleMapRef.current.clear()
-            setCandles([])
-            previousSymbolRef.current = symbol
-        }
+        if (!symbol || !currentInterval) return
 
-        fetchCandles(symbol, currentInterval)
+        // fetch initial data from REST
+        fetchInitialCandlesFromRest(symbol, currentInterval)
 
+        // subscribe to websocket updates
         unsubscribeRef.current = hyperliquidWS.subscribe(
             {
                 type: HyperliquidWebSocketSubscriptionType.CANDLE,
                 coin: symbol,
                 interval: currentInterval,
             },
-            handleCandleUpdate,
+            handleCandleUpdateFromWebSocket,
         )
 
         return () => {
-            if (unsubscribeRef.current) unsubscribeRef.current()
-            unsubscribeRef.current = null
+            if (unsubscribeRef.current) {
+                unsubscribeRef.current()
+                unsubscribeRef.current = null
+            }
         }
-    }, [symbol, currentInterval, fetchCandles, handleCandleUpdate, setCachedCandles])
-
-    // connection status is updated via WebSocket callbacks
+    }, [symbol, currentInterval, fetchInitialCandlesFromRest, handleCandleUpdateFromWebSocket])
 
     return {
         candles,

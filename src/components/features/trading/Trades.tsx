@@ -1,29 +1,20 @@
 'use client'
 
-import { useHyperliquidTrades } from '@/hooks/useHyperliquidTrades'
-import { cn, withMemo } from '@/utils'
-import { useEffect } from 'react'
+import { cn, formatAmount } from '@/utils'
+import { memo } from 'react'
 import { useMarketStore } from '@/stores/market.store'
 import IconWrapper from '@/components/shared/Wrappers/IconWrapper'
 import { IconIds } from '@/enums'
 import LinkWrapper from '@/components/shared/Wrappers/LinkWrapper'
 
 function Trades() {
-    // get symbol directly from store
+    console.log('render: Trades', new Date())
+
+    // get symbol and trades directly from store
     const selectedMarket = useMarketStore((state) => state.selectedMarket)
-    const subscribeToMarket = useMarketStore((state) => state.subscribeToMarket)
     const symbol = selectedMarket?.symbol || 'BTC'
-
-    // ensure market subscription is active
-    useEffect(() => {
-        if (!symbol) return
-        subscribeToMarket(symbol)
-    }, [symbol, subscribeToMarket])
-
-    const { trades, isLoading } = useHyperliquidTrades({
-        symbol,
-        limit: 50,
-    })
+    const trades = useMarketStore((state) => state.trades)
+    const isLoading = trades.length === 0
 
     // format time helper
     const formatTime = (timestamp: number) => {
@@ -112,8 +103,8 @@ function Trades() {
                         const isBuy = trade.side === 'B'
                         return (
                             <article key={`${trade.tid}-${index}`} className="grid grid-cols-3 gap-2 px-2 py-1 hover:bg-hlb-19">
-                                <p className={cn('font-medium', isBuy ? 'text-hlt-13' : 'text-hlt-12')}>{parseFloat(trade.px).toFixed(1)}</p>
-                                <p className="text-center text-hlt-2">{parseFloat(trade.sz).toFixed(4)}</p>
+                                <p className={cn('font-medium', isBuy ? 'text-hlt-13' : 'text-hlt-12')}>{formatAmount(trade.px)}</p>
+                                <p className="text-center text-hlt-2">{formatAmount(trade.sz)}</p>
                                 <LinkWrapper
                                     href={`https://app.hyperliquid.xyz/explorer/tx/${trade.hash}`}
                                     target="_blank"
@@ -130,4 +121,4 @@ function Trades() {
     )
 }
 
-export default withMemo(Trades)
+export default memo(Trades)

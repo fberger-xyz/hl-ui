@@ -1,6 +1,7 @@
 'use client'
 
-import { cn, withMemo } from '@/utils'
+import { cn } from '@/utils'
+import { logger } from '@/utils/logger.util'
 import { useRef, useEffect, useState, useLayoutEffect, useCallback, ReactNode } from 'react'
 import { NuqsKeys, TradeTableTabs } from '@/enums'
 import { useQueryState } from 'nuqs'
@@ -25,7 +26,6 @@ import {
     FundingTableTemplate,
     OrderHistoryTableTemplate,
 } from '@/components/shared/Table/TableRowTemplates'
-import { useAccount } from 'wagmi'
 import toast from 'react-hot-toast'
 import { useVirtualizer } from '@tanstack/react-virtual'
 
@@ -59,12 +59,12 @@ type TableConfig<T = unknown> = {
 // ============================================
 
 // reusable loading spinner
-function LoadingSpinner({ message = 'Loading...' }: { message?: string }) {
+function LoadingSpinner() {
     return (
         <div className="flex h-full items-center justify-center p-4">
             <div className="text-center">
                 <div className="mb-2 h-6 w-6 animate-spin rounded-full border-2 border-hlr-5 border-t-transparent" />
-                <p className="text-hlt-17">{message}</p>
+                {/* <p className="text-hlt-17">{message}</p> */}
             </div>
         </div>
     )
@@ -252,15 +252,16 @@ function TableContent({
     isLoading,
     isLoadingHistory,
     handlers,
+    scrollRef,
 }: {
     config: TableConfig
     data: unknown[]
     isLoading: boolean
     isLoadingHistory: boolean
     handlers: Record<string, unknown>
+    scrollRef?: React.RefObject<HTMLDivElement | null>
 }) {
     const { RowComponent, emptyMessage, isHistorical, renderExtraContent } = config
-    const parentRef = useRef<HTMLDivElement>(null)
 
     // determine if virtualization should be used (for historical tables with many rows)
     const shouldVirtualize = isHistorical && data.length > 50
@@ -268,14 +269,14 @@ function TableContent({
     // virtualizer for large datasets
     const rowVirtualizer = useVirtualizer({
         count: data.length,
-        getScrollElement: () => parentRef.current,
+        getScrollElement: () => scrollRef?.current || null,
         estimateSize: () => 40, // estimated row height
         overscan: 5, // render 5 items outside visible area
-        enabled: shouldVirtualize,
+        enabled: shouldVirtualize && !!scrollRef?.current,
     })
 
     // show loading for historical data
-    if (isHistorical && isLoadingHistory) return <LoadingSpinner message={`Loading ${emptyMessage.replace('No ', '').replace(' yet', '')}...`} />
+    if (isHistorical && isLoadingHistory) return <LoadingSpinner />
 
     // show loading for non-historical data
     if (!isHistorical && isLoading) return <LoadingSpinner />
@@ -283,73 +284,67 @@ function TableContent({
     // empty state
     if (!data.length) return <EmptyState message={emptyMessage} />
 
+    // row renderer configuration map
+    const ROW_RENDERERS: Record<string, (item: unknown, index: number) => ReactNode> = {
+        [BalanceRow.name]: (item: unknown, index) => {
+            const balance = item as Balance
+            return <BalanceRow key={`${balance.coin}-${index}`} balance={balance} />
+        },
+
+        [PositionRow.name]: (item: unknown, index) => {
+            const position = item as Position
+            return <PositionRow key={`${position.coin}-${index}`} position={position} onClose={() => toast('Close position not yet implemented')} />
+        },
+
+        [OpenOrderRow.name]: (item: unknown, index) => {
+            const order = item as OpenOrder
+            return (
+                <OpenOrderRow
+                    key={`${order.id}-${index}`}
+                    order={order}
+                    onCancel={() => (handlers.handleCancelOrder as (id: string, coin: string) => void)?.(order.id.toString(), order.coin)}
+                />
+            )
+        },
+
+        [TwapOrderRow.name]: (item: unknown, index) => {
+            const order = item as TwapOrder
+            return <TwapOrderRow key={`${order.id}-${index}`} order={order} onTerminate={() => toast('Terminate TWAP not yet implemented')} />
+        },
+
+        [TradeRow.name]: (item: unknown, index) => <TradeRow key={`trade-${index}`} trade={item as Trade} />,
+
+        [FundingRow.name]: (item: unknown, index) => <FundingRow key={`funding-${index}`} funding={item as FundingPayment} />,
+
+        [OrderHistoryRow.name]: (item: unknown, index) => <OrderHistoryRow key={`order-${index}`} order={item as OrderHistory} />,
+    }
+
     // render single row based on type
     const renderRow = (item: unknown, index: number) => {
-        switch (RowComponent) {
-            case BalanceRow:
-                return <BalanceRow key={`${(item as Balance).coin}-${index}`} balance={item as Balance} />
-            case PositionRow:
-                return (
-                    <PositionRow
-                        key={`${(item as Position).coin}-${index}`}
-                        position={item as Position}
-                        onClose={() => toast('Close position not yet implemented')}
-                    />
-                )
-            case OpenOrderRow:
-                return (
-                    <OpenOrderRow
-                        key={`${(item as OpenOrder).id}-${index}`}
-                        order={item as OpenOrder}
-                        onCancel={() =>
-                            (handlers.handleCancelOrder as (id: string, coin: string) => void)?.(
-                                (item as OpenOrder).id.toString(),
-                                (item as OpenOrder).coin,
-                            )
-                        }
-                    />
-                )
-            case TwapOrderRow:
-                return (
-                    <TwapOrderRow
-                        key={`${(item as TwapOrder).id}-${index}`}
-                        order={item as TwapOrder}
-                        onTerminate={() => toast('Terminate TWAP not yet implemented')}
-                    />
-                )
-            case TradeRow:
-                return <TradeRow key={`trade-${index}`} trade={item as Trade} />
-            case FundingRow:
-                return <FundingRow key={`funding-${index}`} funding={item as FundingPayment} />
-            case OrderHistoryRow:
-                return <OrderHistoryRow key={`order-${index}`} order={item as OrderHistory} />
-            default:
-                return null
-        }
+        const renderer = ROW_RENDERERS[RowComponent.name]
+        return renderer ? renderer(item, index) : null
     }
 
     // render rows with virtualization for large datasets
-    if (shouldVirtualize) {
+    if (shouldVirtualize && scrollRef?.current) {
         return (
             <>
                 {renderExtraContent?.(data, handlers)}
-                <div ref={parentRef} className="relative">
-                    <div style={{ height: `${rowVirtualizer.getTotalSize()}px`, position: 'relative' }}>
-                        {rowVirtualizer.getVirtualItems().map((virtualRow) => (
-                            <div
-                                key={virtualRow.index}
-                                style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
-                                    width: '100%',
-                                    height: `${virtualRow.size}px`,
-                                    transform: `translateY(${virtualRow.start}px)`,
-                                }}>
-                                {renderRow(data[virtualRow.index], virtualRow.index)}
-                            </div>
-                        ))}
-                    </div>
+                <div className="relative" style={{ height: `${rowVirtualizer.getTotalSize()}px` }}>
+                    {rowVirtualizer.getVirtualItems().map((virtualRow) => (
+                        <div
+                            key={virtualRow.index}
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: `${virtualRow.size}px`,
+                                transform: `translateY(${virtualRow.start}px)`,
+                            }}>
+                            {renderRow(data[virtualRow.index], virtualRow.index)}
+                        </div>
+                    ))}
                 </div>
             </>
         )
@@ -375,11 +370,11 @@ function TradeTables() {
     })
     const tabRefs = useRef<(HTMLDivElement | null)[]>([])
     const [borderStyle, setBorderStyle] = useState({ left: 0, width: 0 })
+    const scrollContainerRef = useRef<HTMLDivElement>(null)
 
     // fetch user account data
-    const { isConnected } = useAccount()
-    const { accountData, isLoading, isLoadingHistory, cancelOrder, cancelAllOrders } = useHyperliquidUserAccount({
-        enabled: isConnected,
+    const { accountData, isLoading, isLoadingHistory, cancelOrder, cancelAllOrders, isConnected } = useHyperliquidUserAccount({
+        enabled: true, // always enable, hook will handle address check
     })
 
     // sliding border position
@@ -414,7 +409,7 @@ function TradeTables() {
                 toast.success('Order cancelled')
             } catch (error) {
                 toast.error('Failed to cancel order')
-                console.error(error)
+                logger.error('Failed to cancel order:', error)
             }
         },
         [cancelOrder],
@@ -426,7 +421,7 @@ function TradeTables() {
             toast.success('All orders cancelled')
         } catch (error) {
             toast.error('Failed to cancel orders')
-            console.error(error)
+            logger.error('Failed to cancel all orders:', error)
         }
     }, [cancelAllOrders])
 
@@ -450,6 +445,17 @@ function TradeTables() {
         })
 
         return <HeaderComponent variant="header" className="sticky top-0 z-10 bg-hlb-21" {...columnProps} />
+    }
+
+    // show connect wallet message when not connected
+    if (!isConnected) {
+        return (
+            <div className="flex grow flex-col gap-0.5 overflow-x-auto">
+                <div className="flex h-full items-center justify-center rounded bg-hlb-21 p-8">
+                    <p className="text-hlt-17">Connect wallet to view account data</p>
+                </div>
+            </div>
+        )
     }
 
     return (
@@ -491,13 +497,14 @@ function TradeTables() {
             <div className="min-h-full min-w-max rounded-b bg-hlb-21">
                 <div className="flex max-h-[400px] flex-col">
                     {renderHeaderColumns()}
-                    <div className="flex-1 overflow-y-auto">
+                    <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
                         <TableContent
                             config={currentConfig}
                             data={currentData}
                             isLoading={isLoading}
                             isLoadingHistory={isLoadingHistory}
                             handlers={handlers}
+                            scrollRef={scrollContainerRef}
                         />
                     </div>
                 </div>
@@ -506,4 +513,4 @@ function TradeTables() {
     )
 }
 
-export default withMemo(TradeTables)
+export default TradeTables

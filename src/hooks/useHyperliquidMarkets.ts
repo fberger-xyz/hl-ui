@@ -1,133 +1,186 @@
-import { useCallback, useEffect, useState } from 'react'
-import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
-import type { AssetContext } from '@/types/hyperliquid.types'
+import { useCallback, useEffect, useState, useRef } from 'react'
+import { hyperliquidWS } from '@/services/hyperliquid-websocket'
+import { subscriptionManager } from '@/services/subscription-manager'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
+import type { AssetContext, MarketMeta } from '@/types/hyperliquid.types'
 import type { MarketData } from '@/types/trading.types'
 
-export function useHyperliquidMarkets(filter: 'all' | 'perps' | 'spot' = 'all') {
-    const [markets, setMarkets] = useState<MarketData[]>([])
-    const [isLoading, setIsLoading] = useState(true)
-    const [error, setError] = useState<string | null>(null)
+export function useHyperliquidMarkets(marketTypeFilter: 'all' | 'perps' | 'spot' = 'all') {
+    const [allMarketsData, setAllMarketsData] = useState<MarketData[]>([])
+    const [isLoadingMarkets, setIsLoadingMarkets] = useState(true)
+    const [marketsFetchError, setMarketsFetchError] = useState<string | null>(null)
+    const allMidsWebsocketUnsubscribe = useRef<(() => void) | null>(null)
+    const staticMarketMetadataCache = useRef<{
+        perpMetadata: MarketMeta | null
+        spotMetadata: MarketMeta | null
+        allSymbols: string[]
+    }>({
+        perpMetadata: null,
+        spotMetadata: null,
+        allSymbols: [],
+    })
 
-    const fetchMarkets = useCallback(async () => {
+    const fetchInitialMarketMetadataFromRest = useCallback(async () => {
         try {
-            setIsLoading(true)
-            setError(null)
+            setIsLoadingMarkets(true)
+            setMarketsFetchError(null)
 
-            // fetch perpetual markets
-            const perpResponse = await hyperliquidWS.fetchInfo('metaAndAssetCtxs')
+            // fetch perp markets metadata
+            const perpetualMarketsResponse = await hyperliquidWS.fetchInfo('metaAndAssetCtxs')
 
-            // guard response structure
-            if (!Array.isArray(perpResponse) || perpResponse.length < 2) throw new Error('Invalid perpetual markets response structure')
+            // guard: invalid response structure
+            if (!Array.isArray(perpetualMarketsResponse) || perpetualMarketsResponse.length < 2) {
+                throw new Error('Invalid perpetual markets response structure')
+            }
 
-            const perpMeta = perpResponse[0] as { universe?: unknown[] }
-            const perpContexts: AssetContext[] = (perpResponse[1] as AssetContext[]) || []
+            const perpMetadataPayload = perpetualMarketsResponse[0] as MarketMeta
+            const perpAssetContextsArray: AssetContext[] = (perpetualMarketsResponse[1] as AssetContext[]) || []
 
-            // process perp markets
-            const perpMarkets: MarketData[] = perpContexts
-                .map((ctx, index) => {
-                    // get coin info
-                    const coinInfo = perpMeta?.universe?.[index] as { name?: string; isDelisted?: boolean; maxLeverage?: number } | undefined
+            // cache static metadata
+            staticMarketMetadataCache.current.perpMetadata = perpMetadataPayload
 
-                    // skip delisted
-                    if (!coinInfo || coinInfo.isDelisted) return null
+            const processedPerpMarkets: MarketData[] = perpAssetContextsArray
+                .map((assetContext, assetIndex) => {
+                    const coinMetadata = perpMetadataPayload?.universe?.[assetIndex]
 
-                    const symbol = coinInfo.name || ''
+                    // skip delisted or invalid
+                    if (!coinMetadata || coinMetadata.isDelisted) return null
 
-                    const currentPrice = parseFloat(ctx.markPx || '0')
-                    const prevPrice = parseFloat(ctx.prevDayPx || '0')
-                    const change24h = currentPrice - prevPrice
-                    const changePercent24h = prevPrice > 0 ? (change24h / prevPrice) * 100 : 0
+                    const coinSymbol = coinMetadata.name || ''
+                    const currentMarkPrice = parseFloat(assetContext.markPx || '0')
+                    const previousDayPrice = parseFloat(assetContext.prevDayPx || '0')
+                    const priceChange24h = currentMarkPrice - previousDayPrice
+                    const priceChangePercent24h = previousDayPrice > 0 ? (priceChange24h / previousDayPrice) * 100 : 0
 
                     return {
-                        symbol: symbol,
-                        name: symbol,
-                        px: ctx.markPx || '0',
-                        change24h,
-                        changePercent24h,
-                        dayNtlVlm: ctx.dayNtlVlm || '0',
-                        funding: ctx.funding || '0',
-                        openInterest: ctx.openInterest || '0',
+                        symbol: coinSymbol,
+                        name: coinSymbol,
+                        px: assetContext.markPx || '0',
+                        change24h: priceChange24h,
+                        changePercent24h: priceChangePercent24h,
+                        dayNtlVlm: assetContext.dayNtlVlm || '0',
+                        funding: assetContext.funding || '0',
+                        openInterest: assetContext.openInterest || '0',
                         type: 'perp' as const,
-                        maxLeverage: coinInfo.maxLeverage,
+                        maxLeverage: coinMetadata.maxLeverage,
                     }
                 })
                 .filter(Boolean) as MarketData[]
 
-            // fetch spot markets
-            let spotMarkets: MarketData[] = []
-            if (filter !== 'perps') {
+            let processedSpotMarkets: MarketData[] = []
+            // skip spot fetch if only perps requested
+            if (marketTypeFilter !== 'perps') {
                 try {
-                    const spotResponse = await hyperliquidWS.fetchInfo('spotMetaAndAssetCtxs')
+                    const spotMarketsResponse = await hyperliquidWS.fetchInfo('spotMetaAndAssetCtxs')
 
-                    // guard spot response
-                    if (!Array.isArray(spotResponse) || spotResponse.length < 2) return (console.warn('Invalid spot markets response structure'), [])
+                    // guard: invalid spot response
+                    if (!Array.isArray(spotMarketsResponse) || spotMarketsResponse.length < 2) {
+                        console.warn('Invalid spot markets response structure')
+                        return []
+                    }
 
-                    const spotMeta = spotResponse[0] as { universe?: unknown[] }
-                    const spotContexts: AssetContext[] = (spotResponse[1] as AssetContext[]) || []
+                    const spotMetadataPayload = spotMarketsResponse[0] as MarketMeta
+                    const spotAssetContextsArray: AssetContext[] = (spotMarketsResponse[1] as AssetContext[]) || []
 
-                    spotMarkets = spotContexts
-                        .map((ctx, index) => {
-                            // get coin info
-                            const coinInfo = spotMeta?.universe?.[index] as { name?: string; isDelisted?: boolean } | undefined
+                    // cache static metadata
+                    staticMarketMetadataCache.current.spotMetadata = spotMetadataPayload
 
-                            // skip invalid coins
-                            if (!coinInfo) return null
+                    processedSpotMarkets = spotAssetContextsArray
+                        .map((assetContext, assetIndex) => {
+                            const coinMetadata = spotMetadataPayload?.universe?.[assetIndex]
 
-                            const symbol = coinInfo.name || ''
-                            const currentPrice = parseFloat(ctx.markPx || '0')
-                            const prevPrice = parseFloat(ctx.prevDayPx || '0')
-                            const change24h = currentPrice - prevPrice
-                            const changePercent24h = prevPrice > 0 ? (change24h / prevPrice) * 100 : 0
+                            if (!coinMetadata) return null
+
+                            const coinSymbol = coinMetadata.name || ''
+                            const currentMarkPrice = parseFloat(assetContext.markPx || '0')
+                            const previousDayPrice = parseFloat(assetContext.prevDayPx || '0')
+                            const priceChange24h = currentMarkPrice - previousDayPrice
+                            const priceChangePercent24h = previousDayPrice > 0 ? (priceChange24h / previousDayPrice) * 100 : 0
 
                             return {
-                                symbol: symbol,
-                                name: symbol,
-                                px: ctx.markPx || '0',
-                                change24h,
-                                changePercent24h,
-                                dayNtlVlm: ctx.dayNtlVlm || '0',
+                                symbol: coinSymbol,
+                                name: coinSymbol,
+                                px: assetContext.markPx || '0',
+                                change24h: priceChange24h,
+                                changePercent24h: priceChangePercent24h,
+                                dayNtlVlm: assetContext.dayNtlVlm || '0',
                                 funding: '0',
                                 openInterest: '0',
                                 type: 'spot' as const,
                             }
                         })
                         .filter(Boolean) as MarketData[]
-                } catch (err) {
-                    console.warn('Failed to fetch spot markets:', err)
+                } catch (spotFetchError) {
+                    console.warn('Failed to fetch spot markets:', spotFetchError)
                 }
             }
 
-            // combine markets
-            let allMarkets = [...perpMarkets, ...spotMarkets]
+            // combine and filter by type
+            let combinedMarkets = [...processedPerpMarkets, ...processedSpotMarkets]
 
-            if (filter === 'perps') allMarkets = allMarkets.filter((m) => m.type === 'perp')
-            else if (filter === 'spot') allMarkets = allMarkets.filter((m) => m.type === 'spot')
+            if (marketTypeFilter === 'perps') combinedMarkets = combinedMarkets.filter((market) => market.type === 'perp')
+            else if (marketTypeFilter === 'spot') combinedMarkets = combinedMarkets.filter((market) => market.type === 'spot')
 
-            // sort by volume
-            allMarkets.sort((a, b) => parseFloat(b.dayNtlVlm) - parseFloat(a.dayNtlVlm))
+            // cache all symbols for reference
+            staticMarketMetadataCache.current.allSymbols = combinedMarkets.map((market) => market.symbol)
 
-            setMarkets(allMarkets)
-        } catch (err) {
-            console.error('Error fetching markets:', err)
-            setError(err instanceof Error ? err.message : 'Failed to fetch markets')
+            // sort by daily volume descending
+            combinedMarkets.sort((marketA, marketB) => parseFloat(marketB.dayNtlVlm) - parseFloat(marketA.dayNtlVlm))
+
+            setAllMarketsData(combinedMarkets)
+            return combinedMarkets
+        } catch (fetchError) {
+            console.error('Error fetching markets:', fetchError)
+            setMarketsFetchError(fetchError instanceof Error ? fetchError.message : 'Failed to fetch markets')
+            return []
         } finally {
-            setIsLoading(false)
+            setIsLoadingMarkets(false)
         }
-    }, [filter])
+    }, [marketTypeFilter])
 
     useEffect(() => {
-        fetchMarkets()
+        fetchInitialMarketMetadataFromRest().then((initialMarketsList) => {
+            // guard: no markets to subscribe
+            if (initialMarketsList.length === 0) return
 
-        // refresh periodically
-        const interval = setInterval(fetchMarkets, 10000)
+            // subscribe to all mid prices websocket
+            const unsubscribeFromAllMids = subscriptionManager.subscribe(
+                {
+                    type: HyperliquidWebSocketSubscriptionType.ALL_MIDS,
+                },
+                (allMidsData) => {
+                    const midsPayload = allMidsData as { mids: Record<string, string> }
+                    if (!midsPayload?.mids) return
 
-        return () => clearInterval(interval)
-    }, [fetchMarkets])
+                    // update market prices in real-time
+                    setAllMarketsData((previousMarkets) => {
+                        return previousMarkets.map((marketItem) => {
+                            const updatedMidPrice = midsPayload.mids[marketItem.symbol]
+                            if (!updatedMidPrice) return marketItem
+
+                            return {
+                                ...marketItem,
+                                px: updatedMidPrice,
+                            }
+                        })
+                    })
+                },
+            )
+
+            allMidsWebsocketUnsubscribe.current = unsubscribeFromAllMids
+        })
+
+        return () => {
+            if (!allMidsWebsocketUnsubscribe.current) return
+            allMidsWebsocketUnsubscribe.current()
+            allMidsWebsocketUnsubscribe.current = null
+        }
+    }, [fetchInitialMarketMetadataFromRest])
 
     return {
-        markets,
-        isLoading,
-        error,
-        refetch: fetchMarkets,
+        markets: allMarketsData,
+        isLoading: isLoadingMarkets,
+        error: marketsFetchError,
+        refetch: fetchInitialMarketMetadataFromRest,
     }
 }

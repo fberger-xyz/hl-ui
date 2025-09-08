@@ -15,15 +15,19 @@ export function WalletConnect({ className }: { className?: string }) {
     const { connectWallet } = useConnectWallet()
     const { wallets } = useWallets() // ready
     const { setActiveWallet } = useSetActiveWallet()
-    const { address, isConnected } = useAccount()
+    const { address } = useAccount()
+
+    // use privy wallets to determine connection state
+    const activeWallet = wallets[0]
 
     const formatAddress = (addr: string) => {
         return `${addr.slice(0, 6)}...${addr.slice(-4)}`
     }
 
     const copyAddress = async () => {
-        if (!address) return
-        await navigator.clipboard.writeText(address)
+        const addr = activeWallet?.address || address
+        if (!addr) return
+        await navigator.clipboard.writeText(addr)
         toast.success('Address copied!')
     }
 
@@ -38,7 +42,7 @@ export function WalletConnect({ className }: { className?: string }) {
         )
     }
 
-    if (isConnected && address) {
+    if (authenticated && activeWallet?.address) {
         return (
             <Dropdown
                 className={className}
@@ -50,7 +54,7 @@ export function WalletConnect({ className }: { className?: string }) {
                     <button
                         type="button"
                         className="flex items-center gap-2 rounded-lg border border-hlr-5 p-2 px-3 transition-all duration-300 ease-in-out">
-                        <span className="">{formatAddress(address)}</span>
+                        <span className="">{formatAddress(activeWallet.address)}</span>
                         <IconWrapper id={IconIds.CHEVRON_DOWN} className={cn('size-4 transition-transform', isOpen && 'rotate-180')} />
                     </button>
                 )}>
@@ -58,12 +62,12 @@ export function WalletConnect({ className }: { className?: string }) {
                     {/* Current wallet section */}
                     <div className="border-b border-hlr-5 px-3 py-2">
                         <div className="flex items-center gap-2">
-                            <StyledTooltip content={<p>{address}</p>}>
-                                <p className="">{formatAddress(address)}</p>
+                            <StyledTooltip content={<p>{activeWallet.address}</p>}>
+                                <p className="">{formatAddress(activeWallet.address)}</p>
                             </StyledTooltip>
                             <button
                                 type="button"
-                                onClick={copyAddress}
+                                onClick={() => copyAddress()}
                                 className="rounded-lg p-2 transition-colors duration-200 ease-in-out"
                                 title="Copy address"
                                 data-no-close>
@@ -78,7 +82,7 @@ export function WalletConnect({ className }: { className?: string }) {
                             <p className="px-3 pb-2 pt-3 text-xs text-hlt-2">Switch Wallet</p>
                             <div className="max-h-32 overflow-y-auto">
                                 {wallets
-                                    .filter((w) => w.address !== address)
+                                    .filter((w) => w.address !== activeWallet.address)
                                     .map((wallet) => (
                                         <button
                                             type="button"

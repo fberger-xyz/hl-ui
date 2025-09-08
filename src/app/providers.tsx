@@ -6,7 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { wagmiConfig } from '@/config/wagmi.config'
 import { ReactNode, useState, useEffect } from 'react'
 import { env } from '@/env/t3-env'
-import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
+import { hyperliquidWS } from '@/services/hyperliquid-websocket'
 
 export default function WalletProviders({ children }: { children: ReactNode }) {
     const [queryClient] = useState(

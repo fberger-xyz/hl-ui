@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { hyperliquidWS } from '@/services/hyperliquid-websocket-client'
+import { hyperliquidWS } from '@/services/hyperliquid-websocket'
 import { HyperliquidWebSocketSubscriptionType } from '@/enums'
 import type { SubscriptionOptions } from '@/types/hyperliquid.types'
 

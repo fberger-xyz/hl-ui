@@ -1,21 +1,5 @@
 import numeral from 'numeral'
 
-export const shortenValue = (value: string, chars = 3) => {
-    if (chars >= value.length) return value
-    return `${value.slice(0, chars)}...${value.slice(-chars)}`
-}
-
-export const cleanOutput = (output: string | number, fallbackOutput = '-'): string => {
-    const strOutput = String(output).replaceAll('~', '').replaceAll(' ', '')
-    if (strOutput === '0') return fallbackOutput
-    if (strOutput === '0%') return fallbackOutput
-    if (strOutput === '0$') return fallbackOutput
-    if (strOutput === '0k$') return fallbackOutput
-    if (strOutput === '0m$') return fallbackOutput
-    if (strOutput.includes('NaN')) return fallbackOutput
-    return String(output)
-}
-
 export const formatAmount = (amount: number | string | null | undefined, currency = '$') => {
     try {
         // guard: null/undefined

@@ -1,9 +1,11 @@
 'use client'
 
-import { useCallback } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useAccount } from 'wagmi'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useHyperliquidSDK } from '@/hooks/useHyperliquidSDK'
+import { hyperliquidWS } from '@/services/hyperliquid-websocket'
+import { HyperliquidWebSocketSubscriptionType } from '@/enums'
+import { parseSide, calculateValue, parsePositionSide, getNestedValue, safeParseFloat } from '@/utils/hyperliquid-parsers.util'
+import { logger } from '@/utils/logger.util'
 import type {
     Balance,
     Position,
@@ -15,11 +17,17 @@ import type {
     UserAccountData,
     PortfolioData,
 } from '@/types/user-account.types'
-import type { OpenOrder as HLOpenOrder, UserFill, ClearinghouseState as HLClearinghouseState } from '@/types/hyperliquid.types'
+import type { OpenOrder as HLOpenOrder, UserFill, ClearinghouseState as HLClearinghouseState, WsOrder, WebData2 } from '@/types/hyperliquid.types'
+import {
+    isWebData2Message,
+    isWebSocketOrderArrayMessage,
+    isWebSocketUserFillsMessage,
+    isWebSocketFundingDataMessage,
+    isWebSocketTwapHistoryMessage,
+} from '@/utils/hyperliquid-type-guards'
 
 interface UseHyperliquidUserAccountOptions {
     enabled?: boolean
-    refetchInterval?: number
 }
 
 // parse clearinghouse state to ui types
@@ -71,6 +79,24 @@ function parseClearinghouseState(state: HLClearinghouseState | null): {
     return { balances, positions }
 }
 
+// parse webdata2 to account state
+function parseWebData2(data: WebData2 | null): {
+    balances: Balance[]
+    positions: Position[]
+} {
+    if (!data) return { balances: [], positions: [] }
+
+    const balances: Balance[] = []
+    const positions: Position[] = []
+
+    // extract balance from webdata2
+    if (data.clearinghouseState) {
+        return parseClearinghouseState(data.clearinghouseState as HLClearinghouseState)
+    }
+
+    return { balances, positions }
+}
+
 // helper to parse open orders
 function parseOpenOrders(orders: HLOpenOrder[]): OpenOrder[] {
     return orders.map((order) => ({
@@ -78,12 +104,12 @@ function parseOpenOrders(orders: HLOpenOrder[]): OpenOrder[] {
         time: order.timestamp || Date.now(),
         type: 'limit',
         coin: order.coin,
-        side: order.side === 'B' ? 'buy' : 'sell',
+        side: parseSide(order.side),
         size: order.sz,
         filledSize: '0',
         originalSize: order.origSz || order.sz,
         price: order.limitPx,
-        value: (parseFloat(order.sz) * parseFloat(order.limitPx)).toString(),
+        value: calculateValue(order.sz, order.limitPx),
         reduceOnly: false,
         postOnly: false,
         triggerCondition: undefined,
@@ -91,18 +117,40 @@ function parseOpenOrders(orders: HLOpenOrder[]): OpenOrder[] {
     }))
 }
 
+// parse ws orders to open orders
+function parseWsOrders(orders: WsOrder[]): OpenOrder[] {
+    return orders
+        .filter((order) => order.status === 'open' || order.status === 'triggered')
+        .map((order) => ({
+            id: order.order.oid,
+            time: order.order.timestamp,
+            type: 'limit',
+            coin: order.order.coin,
+            side: parseSide(order.order.side),
+            size: order.order.sz,
+            filledSize: (safeParseFloat(order.order.origSz) - safeParseFloat(order.order.sz)).toString(),
+            originalSize: order.order.origSz,
+            price: order.order.limitPx,
+            value: calculateValue(order.order.sz, order.order.limitPx),
+            reduceOnly: false,
+            postOnly: false,
+            triggerCondition: undefined,
+            tpsl: undefined,
+        }))
+}
+
 // helper to parse trade history
 function parseTrades(fills: UserFill[]): Trade[] {
     return fills.map((fill) => ({
         time: fill.time,
         coin: fill.coin,
-        side: fill.side === 'B' ? 'buy' : 'sell',
+        side: parseSide(fill.side),
         price: fill.px,
         size: fill.sz,
-        value: (parseFloat(fill.sz) * parseFloat(fill.px)).toString(),
+        value: calculateValue(fill.sz, fill.px),
         fee: fill.fee || '0',
         feeRate: undefined,
-        closedPnl: fill.closedPnl ? parseFloat(fill.closedPnl) : undefined,
+        closedPnl: fill.closedPnl ? safeParseFloat(fill.closedPnl) : undefined,
         orderType: undefined,
         orderId: fill.oid.toString(),
     }))
@@ -111,35 +159,44 @@ function parseTrades(fills: UserFill[]): Trade[] {
 // helper to parse funding history
 function parseFundingHistory(funding: unknown[]): FundingPayment[] {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return funding.map((f: any) => ({
-        time: f.time,
-        coin: f.coin,
-        size: f.ntlPos,
-        positionSide: parseFloat(f.ntlPos) > 0 ? 'long' : 'short',
-        payment: f.payment,
-        rate: f.fundingRate,
-    }))
+    return funding.map((f: any) => {
+        const size = f.ntlPos || f.szi
+        return {
+            time: f.time,
+            coin: f.coin,
+            size: size,
+            positionSide: parsePositionSide(size),
+            payment: f.payment || f.usdc,
+            rate: f.fundingRate,
+        }
+    })
 }
 
 // helper to parse order history
 function parseOrderHistory(orders: unknown[]): OrderHistory[] {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return orders.map((order: any) => ({
-        time: order.timestamp || order.time,
-        type: order.orderType || 'limit',
-        coin: order.coin,
-        side: order.side === 'B' ? 'buy' : 'sell',
-        filledSize: order.filledSz || '0',
-        originalSize: order.origSz || order.sz,
-        price: order.px || order.limitPx,
-        value: (parseFloat(order.sz || '0') * parseFloat(order.px || order.limitPx || '0')).toString(),
-        reduceOnly: order.reduceOnly || false,
-        triggerCondition: order.triggerCondition,
-        tpsl: order.tpsl,
-        status: order.status || 'filled',
-        orderId: order.oid || order.id,
-        cancelReason: order.cancelReason,
-    }))
+    return orders.map((order: any) => {
+        const side = getNestedValue(order, ['order.side', 'side'], 'B')
+        const size = getNestedValue(order, ['order.sz', 'sz'], '0')
+        const price = getNestedValue(order, ['order.px', 'px', 'order.limitPx', 'limitPx'], '0')
+
+        return {
+            time: getNestedValue(order, ['order.timestamp', 'timestamp', 'time'], Date.now()),
+            type: getNestedValue(order, ['order.orderType', 'orderType'], 'limit'),
+            coin: getNestedValue(order, ['order.coin', 'coin'], 'UNKNOWN'),
+            side: parseSide(side),
+            filledSize: getNestedValue(order, ['order.filledSz', 'filledSz'], '0'),
+            originalSize: getNestedValue(order, ['order.origSz', 'origSz', 'order.sz', 'sz'], '0'),
+            price: price,
+            value: calculateValue(size, price),
+            reduceOnly: getNestedValue(order, ['order.reduceOnly', 'reduceOnly'], false),
+            triggerCondition: getNestedValue(order, ['order.triggerCondition', 'triggerCondition'], undefined),
+            tpsl: getNestedValue(order, ['order.tpsl', 'tpsl'], undefined),
+            status: order.status || 'filled',
+            orderId: getNestedValue(order, ['order.oid', 'oid', 'id'], ''),
+            cancelReason: order.cancelReason,
+        }
+    })
 }
 
 // helper to parse twap orders
@@ -161,122 +218,288 @@ function parseTwapOrders(twaps: unknown[]): TwapOrder[] {
 }
 
 export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOptions = {}) {
-    const { enabled = true, refetchInterval = 5000 } = options
-    const { address, isConnected } = useAccount()
-    const { sdk, isInitialized } = useHyperliquidSDK()
-    const queryClient = useQueryClient()
+    const { enabled = true } = options
+    const { sdk, isInitialized, address: sdkAddress } = useHyperliquidSDK()
 
-    // main clearinghouse state query (balances + positions)
-    const clearinghouseQuery = useQuery({
-        queryKey: ['hyperliquid', 'clearinghouse', address],
-        queryFn: async () => {
-            if (!sdk || !address) return null
-            const state = await sdk.getUserState(address)
-            return state
-        },
-        enabled: enabled && isConnected && isInitialized && !!address,
-        refetchInterval,
-        staleTime: 2000,
-    })
+    // use address from sdk (only available when authenticated with wallets)
+    const address = sdkAddress
 
-    // open orders query
-    const openOrdersQuery = useQuery({
-        queryKey: ['hyperliquid', 'openOrders', address],
-        queryFn: async () => {
-            if (!sdk || !address) return []
-            return sdk.getOpenOrders(address)
-        },
-        enabled: enabled && isConnected && isInitialized && !!address,
-        refetchInterval: 3000,
-        staleTime: 1000,
-    })
+    // state for websocket data
+    const [webData, setWebData] = useState<WebData2 | null>(null)
+    const [openOrders, setOpenOrders] = useState<OpenOrder[]>([])
+    const [trades, setTrades] = useState<Trade[]>([])
+    const [fundingPayments, setFundingPayments] = useState<FundingPayment[]>([])
+    const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([])
+    const [twapOrders, setTwapOrders] = useState<TwapOrder[]>([])
+    const [portfolio, setPortfolio] = useState<PortfolioData | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
+    const [error, setError] = useState<Error | null>(null)
 
-    // trade history query (last 7 days)
-    const tradesQuery = useQuery({
-        queryKey: ['hyperliquid', 'trades', address],
-        queryFn: async () => {
-            if (!sdk || !address) return []
-            const endTime = Date.now()
-            const startTime = endTime - 7 * 24 * 60 * 60 * 1000 // 7 days
-            return sdk.getUserFillsByTime(address, startTime, endTime)
-        },
-        enabled: enabled && isConnected && isInitialized && !!address,
-        refetchInterval: 30000,
-        staleTime: 10000,
-    })
+    // refs for cleanup
+    const unsubscribeRefs = useRef<(() => void)[]>([])
+    const fetchPromiseRef = useRef<Promise<void> | null>(null)
 
-    // funding history query (last 30 days)
-    const fundingQuery = useQuery({
-        queryKey: ['hyperliquid', 'funding', address],
-        queryFn: async () => {
-            if (!sdk || !address) return []
-            const endTime = Date.now()
-            const startTime = endTime - 30 * 24 * 60 * 60 * 1000 // 30 days
-            return sdk.getUserFunding(address, startTime, endTime)
-        },
-        enabled: enabled && isConnected && isInitialized && !!address,
-        refetchInterval: 30000,
-        staleTime: 10000,
-    })
+    // fetch user-specific data not available via websocket
+    const fetchInitialUserData = useCallback(() => {
+        // guard: require sdk and address
+        if (!sdk || !isInitialized || !address) return
 
-    // order history query
-    const orderHistoryQuery = useQuery({
-        queryKey: ['hyperliquid', 'orderHistory', address],
-        queryFn: async () => {
-            if (!sdk || !address) return []
-            return sdk.getHistoricalOrders(address)
-        },
-        enabled: enabled && isConnected && isInitialized && !!address,
-        refetchInterval: 30000,
-        staleTime: 10000,
-    })
+        // dedup: return existing promise if already fetching
+        if (fetchPromiseRef.current) return fetchPromiseRef.current
 
-    // twap orders query
-    const twapQuery = useQuery({
-        queryKey: ['hyperliquid', 'twap', address],
-        queryFn: async () => {
-            if (!sdk || !address) return []
-            return sdk.getTwapHistory(address)
-        },
-        enabled: enabled && isConnected && isInitialized && !!address,
-        refetchInterval: 10000,
-        staleTime: 5000,
-    })
+        const fetchPromise = (async () => {
+            try {
+                setIsLoading(true)
+                setError(null)
 
-    // portfolio stats query
-    const portfolioQuery = useQuery({
-        queryKey: ['hyperliquid', 'portfolio', address],
-        queryFn: async () => {
-            if (!sdk || !address) return null
-            return sdk.getUserPortfolio(address)
-        },
-        enabled: enabled && isConnected && isInitialized && !!address,
-        refetchInterval: 60000,
-        staleTime: 30000,
-    })
+                // fetch non-websocket data: portfolio, historical orders, user state, fills, funding
+                const [portfolio, history, userState, fills, funding] = await Promise.all([
+                    sdk.getUserPortfolio(address),
+                    sdk.getHistoricalOrders(address),
+                    sdk.getUserState(address), // fetch clearinghouse state
+                    sdk.getUserFills(address),
+                    sdk.getUserFunding(address),
+                ])
+
+                // set initial data
+                setPortfolio(portfolio as PortfolioData)
+                setOrderHistory(parseOrderHistory(history))
+                setTrades(parseTrades(fills))
+                setFundingPayments(parseFundingHistory(funding))
+
+                // if we got user state, parse and set it
+                if (userState) {
+                    // just parse to validate, but don't need the results
+                    parseClearinghouseState(userState as unknown as HLClearinghouseState)
+                    // set webData with clearinghouse state
+                    setWebData({ clearinghouseState: userState } as WebData2)
+                }
+
+                // note: other data comes from websocket subscriptions:
+                // - state via webData2
+                // - open orders via orderUpdates
+                // - fills via userFills
+                // - funding via userFundings
+                // - twap via userTwapHistory
+            } catch (err) {
+                logger.error('Error fetching initial user data:', err)
+                setError(err as Error)
+            } finally {
+                setIsLoading(false)
+                fetchPromiseRef.current = null // clear the promise ref
+            }
+        })()
+
+        fetchPromiseRef.current = fetchPromise
+        return fetchPromise
+    }, [sdk, isInitialized, address])
+
+    useEffect(() => {
+        // guard: require address and sdk (read-only is ok)
+        if (!enabled || !address) {
+            // clear all data when disconnected
+            setWebData(null)
+            setOpenOrders([])
+            setTrades([])
+            setFundingPayments([])
+            setOrderHistory([])
+            setTwapOrders([])
+            setPortfolio(null)
+            setIsLoading(false)
+            setError(null)
+            return
+        }
+
+        // wait for sdk to be available
+        if (!sdk || !isInitialized) return
+
+        fetchInitialUserData()
+
+        // subscribe to websocket updates
+
+        // 1. webdata2 for account state
+        const unsubWebData = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.WEB_DATA2,
+                user: address,
+            },
+            (data) => {
+                if (isWebData2Message(data)) {
+                    setWebData(data)
+                    setIsLoading(false)
+                }
+            },
+        )
+        unsubscribeRefs.current.push(unsubWebData)
+
+        // 2. order updates
+        const unsubOrders = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.ORDER_UPDATES,
+                user: address,
+            },
+            (data) => {
+                if (isWebSocketOrderArrayMessage(data)) {
+                    setOpenOrders(parseWsOrders(data))
+                }
+            },
+        )
+        unsubscribeRefs.current.push(unsubOrders)
+
+        // 3. user fills
+        const unsubFills = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.USER_FILLS,
+                user: address,
+                aggregateByTime: true, // match official client
+            },
+            (data) => {
+                if (isWebSocketUserFillsMessage(data)) {
+                    if (data.isSnapshot) {
+                        // replace all trades with snapshot
+                        setTrades(parseTrades(data.fills as UserFill[]))
+                    } else {
+                        // append new fills
+                        setTrades((prev) => [...parseTrades(data.fills as UserFill[]), ...prev].slice(0, 1000)) // keep last 1000 trades
+                    }
+                }
+            },
+        )
+        unsubscribeRefs.current.push(unsubFills)
+
+        // 4. funding payments
+        const unsubFunding = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.USER_FUNDINGS,
+                user: address,
+            },
+            (data) => {
+                if (isWebSocketFundingDataMessage(data)) {
+                    if (data.isSnapshot) {
+                        // replace all funding with snapshot
+                        setFundingPayments(parseFundingHistory(data.fundings))
+                    } else {
+                        // append new funding
+                        setFundingPayments((prev) => [...parseFundingHistory(data.fundings), ...prev].slice(0, 1000)) // keep last 1000
+                    }
+                }
+            },
+        )
+        unsubscribeRefs.current.push(unsubFunding)
+
+        // 5. twap history
+        const unsubTwapHistory = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.USER_TWAP_HISTORY,
+                user: address,
+            },
+            (data) => {
+                if (isWebSocketTwapHistoryMessage(data)) {
+                    if (data.isSnapshot) {
+                        // replace all with snapshot
+                        setTwapOrders(parseTwapOrders(data.history || []))
+                    } else if (data.history) {
+                        // append new twap updates
+                        setTwapOrders((prev) => [...parseTwapOrders(data.history), ...prev].slice(0, 100)) // keep last 100 twap orders
+                    }
+                }
+            },
+        )
+        unsubscribeRefs.current.push(unsubTwapHistory)
+
+        // 6. notification
+        const unsubNotification = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.NOTIFICATION,
+                user: address,
+            },
+            (data) => {
+                // handle notifications if needed
+                logger.debug('Notification received:', data)
+            },
+        )
+        unsubscribeRefs.current.push(unsubNotification)
+
+        // 7. user non-funding ledger updates
+        const unsubLedger = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.USER_NON_FUNDING_LEDGER_UPDATES,
+                user: address,
+            },
+            (data) => {
+                // handle ledger updates if needed
+                logger.debug('Ledger update:', data)
+            },
+        )
+        unsubscribeRefs.current.push(unsubLedger)
+
+        // 8. user historical orders
+        const unsubHistoricalOrders = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.USER_HISTORICAL_ORDERS,
+                user: address,
+            },
+            (data) => {
+                // handle historical orders updates
+                logger.debug('Historical orders update:', data)
+                // could parse and update orderHistory state here
+            },
+        )
+        unsubscribeRefs.current.push(unsubHistoricalOrders)
+
+        // 9. user twap slice fills
+        const unsubTwapSliceFills = hyperliquidWS.subscribe(
+            {
+                type: HyperliquidWebSocketSubscriptionType.USER_TWAP_SLICE_FILLS,
+                user: address,
+            },
+            (data) => {
+                // handle twap slice fills
+                logger.debug('TWAP slice fills:', data)
+            },
+        )
+        unsubscribeRefs.current.push(unsubTwapSliceFills)
+
+        // cleanup
+        return () => {
+            unsubscribeRefs.current.forEach((unsub) => unsub())
+            unsubscribeRefs.current = []
+        }
+    }, [enabled, address, sdk, isInitialized, fetchInitialUserData])
 
     // combine all account data
+    const parsedWebData = parseWebData2(webData)
+
     const accountData: UserAccountData = {
-        ...parseClearinghouseState((clearinghouseQuery.data || null) as HLClearinghouseState | null),
-        openOrders: parseOpenOrders((openOrdersQuery.data || []) as HLOpenOrder[]),
-        twapOrders: parseTwapOrders(twapQuery.data || []),
-        tradeHistory: parseTrades((tradesQuery.data || []) as UserFill[]),
-        fundingHistory: parseFundingHistory(fundingQuery.data || []),
-        orderHistory: parseOrderHistory(orderHistoryQuery.data || []),
+        ...parsedWebData,
+        openOrders,
+        twapOrders,
+        tradeHistory: trades,
+        fundingHistory: fundingPayments,
+        orderHistory,
     }
 
-    // refresh functions
+    // refresh balance data
     const refreshBalances = useCallback(() => {
-        queryClient.invalidateQueries({ queryKey: ['hyperliquid', 'clearinghouse', address] })
-    }, [queryClient, address])
+        fetchInitialUserData()
+    }, [fetchInitialUserData])
 
-    const refreshOrders = useCallback(() => {
-        queryClient.invalidateQueries({ queryKey: ['hyperliquid', 'openOrders', address] })
-    }, [queryClient, address])
+    const refreshOrders = useCallback(async () => {
+        // orders update automatically via websocket
+        // but we can fetch if needed
+        if (sdk && address) {
+            try {
+                const orders = await sdk.getOpenOrders(address)
+                setOpenOrders(parseOpenOrders(orders as HLOpenOrder[]))
+            } catch (err) {
+                logger.error('Error refreshing orders:', err)
+            }
+        }
+    }, [sdk, address])
 
-    const refreshAll = useCallback(() => {
-        queryClient.invalidateQueries({ queryKey: ['hyperliquid'] })
-    }, [queryClient])
+    const refreshAllUserData = useCallback(() => {
+        fetchInitialUserData()
+    }, [fetchInitialUserData])
 
     // cancel order function
     const cancelOrder = useCallback(
@@ -285,9 +508,9 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
                 throw new Error('SDK not initialized')
             }
             await sdk.cancelOrder(orderId, coin)
-            refreshOrders()
+            // orders will update via websocket
         },
-        [sdk, isInitialized, refreshOrders],
+        [sdk, isInitialized],
     )
 
     // cancel all orders function
@@ -297,33 +520,33 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
                 throw new Error('SDK not initialized')
             }
             await sdk.cancelAllOrders(coin)
-            refreshOrders()
+            // orders will update via websocket
         },
-        [sdk, isInitialized, refreshOrders],
+        [sdk, isInitialized],
     )
 
     return {
         // data
         accountData,
-        portfolio: portfolioQuery.data as PortfolioData | null,
+        portfolio,
 
         // loading states
-        isLoading: clearinghouseQuery.isLoading || openOrdersQuery.isLoading,
-        isLoadingHistory: tradesQuery.isLoading || fundingQuery.isLoading || orderHistoryQuery.isLoading,
+        isLoading,
+        isLoadingHistory: false, // no longer needed with websocket
 
         // error states
-        error: clearinghouseQuery.error || openOrdersQuery.error,
+        error,
 
         // refresh functions
         refreshBalances,
         refreshOrders,
-        refreshAll,
+        refreshAll: refreshAllUserData,
 
         // action functions
         cancelOrder,
         cancelAllOrders,
 
-        // status
-        isConnected: isConnected && isInitialized,
+        // connection status
+        isConnected: !!address, // we have address from privy or wagmi
     }
 }

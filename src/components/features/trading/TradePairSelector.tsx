@@ -6,7 +6,7 @@ import { IconIds } from '@/enums/icons.enum'
 import { ImageWrapper } from '@/components/shared/Wrappers/ImageWrapper'
 import Dropdown from '@/components/primitives/Dropdown'
 import { useHyperliquidMarkets } from '@/hooks/useHyperliquidMarkets'
-import { cn, withMemo } from '@/utils'
+import { cn } from '@/utils'
 import { useUiStore } from '@/stores/ui.store'
 import { useMarketStore } from '@/stores/market.store'
 import { SearchInput } from '@/components/primitives/Input/Input'
@@ -423,11 +423,11 @@ function TradePairSelector() {
 
     // always fetch all markets
     const { markets = [], isLoading } = useHyperliquidMarkets('all')
-    const currentSymbol = useUiStore((state) => state.currentSymbol)
-    const setCurrentSymbol = useUiStore((state) => state.setCurrentSymbol)
     const isFavoriteMarket = useUiStore((state) => state.isFavoriteMarket)
     const toggleFavoriteMarket = useUiStore((state) => state.toggleFavoriteMarket)
+    const selectedMarket = useMarketStore((state) => state.selectedMarket)
     const setSelectedMarket = useMarketStore((state) => state.setSelectedMarket)
+    const currentSymbol = selectedMarket?.symbol || 'BTC'
     const tabRefs = useRef<(HTMLDivElement | null)[]>([])
     const [borderStyle, setBorderStyle] = useState({ left: 0, width: 0 })
 
@@ -691,7 +691,6 @@ function TradePairSelector() {
                                     <MarketRowTemplate
                                         key={market.symbol}
                                         onClick={() => {
-                                            setCurrentSymbol(market.symbol)
                                             setSelectedMarket(market)
                                         }}
                                         isSpot={isSpot}
@@ -756,4 +755,4 @@ function TradePairSelector() {
     )
 }
 
-export default withMemo(TradePairSelector)
+export default TradePairSelector

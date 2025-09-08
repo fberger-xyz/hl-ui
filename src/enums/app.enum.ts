@@ -17,10 +17,6 @@ export enum AppThemes {
     SYSTEM = 'system',
 }
 
-export enum AppFontFamilies {
-    INTER_FONT = 'INTER_FONT',
-}
-
 export enum TradeTableTabs {
     BALANCES = 'Balances',
     POSITIONS = 'Positions',

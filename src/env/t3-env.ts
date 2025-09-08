@@ -13,7 +13,7 @@ export const env = createEnv({
         NEXT_PUBLIC_APP_URL: z.string().min(1),
         NEXT_PUBLIC_COMMIT_TIMESTAMP: z.string().optional(),
         NEXT_PUBLIC_PRIVY_APP_ID: z.string().optional(),
-        NEXT_PUBLIC_DISABLE_MEMO: z.string().optional(), // disable react memo for hot reload in dev
+        NEXT_PUBLIC_USE_SHARED_WORKER: z.string().optional(), // switch between shared worker and direct websocket
     },
 
     // destructure all variables from process.env to make sure they aren't tree-shaken away
@@ -26,7 +26,7 @@ export const env = createEnv({
         NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
         NEXT_PUBLIC_COMMIT_TIMESTAMP: process.env.NEXT_PUBLIC_COMMIT_TIMESTAMP,
         NEXT_PUBLIC_PRIVY_APP_ID: process.env.NEXT_PUBLIC_PRIVY_APP_ID,
-        NEXT_PUBLIC_DISABLE_MEMO: process.env.NEXT_PUBLIC_DISABLE_MEMO,
+        NEXT_PUBLIC_USE_SHARED_WORKER: process.env.NEXT_PUBLIC_USE_SHARED_WORKER,
     },
 
     emptyStringAsUndefined: true,

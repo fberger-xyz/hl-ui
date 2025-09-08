@@ -2,25 +2,22 @@
 
 import TextWithTooltip from '@/components/primitives/Tooltip/TextWithTooltip'
 import { useMarketStore } from '@/stores/market.store'
-import { cn, formatAmount, withMemo } from '@/utils'
+import { cn, formatAmount } from '@/utils'
 import numeral from 'numeral'
 import { useEffect } from 'react'
+import { useActiveAssetContext } from '@/hooks/useActiveAssetContext'
 
 function TradePairKPIs() {
     const selectedMarket = useMarketStore((state) => state.selectedMarket)
     const marketKPIs = useMarketStore((state) => state.marketKPIs)
-    const subscribeToMarket = useMarketStore((state) => state.subscribeToMarket)
+
+    // subscribe to active asset context for real-time kpis
+    useActiveAssetContext()
 
     // calculate values - move before any conditional returns
     const markPx = marketKPIs?.markPx || Number(selectedMarket?.px || '0')
     const prevPx = marketKPIs?.prevDayPx || markPx * (1 - (selectedMarket?.changePercent24h || 0) / 100)
     const change24hAbs = marketKPIs?.change24hAbs || markPx - prevPx
-
-    // subscribe to market updates when selected market changes
-    useEffect(() => {
-        if (!selectedMarket?.symbol) return
-        subscribeToMarket(selectedMarket.symbol)
-    }, [selectedMarket?.symbol, subscribeToMarket])
 
     // update document title with real-time price
     useEffect(() => {
@@ -145,4 +142,4 @@ function TradePairKPIs() {
     )
 }
 
-export default withMemo(TradePairKPIs)
+export default TradePairKPIs

@@ -33,6 +33,7 @@ import { NuqsAdapter } from 'nuqs/adapters/next/app'
 import { Analytics } from '@vercel/analytics/next'
 import { ChunkErrorHandler } from '@/components/shared/ErrorBoundary/ChunkErrorHandler'
 import WalletProviders from './providers'
+import { WebSocketDebugger } from '@/components/features/debug/WebSocketDebugger'
 
 // note: 1500x500 dimensions work well for twitter's 3:1 aspect ratio
 // standard opengraph recommends 1200x630, but twitter handles this size well
@@ -173,6 +174,7 @@ export default async function RootLayout({
                 </PWAProvider>
                 <Analytics />
                 <ChunkErrorHandler />
+                {process.env.NODE_ENV === 'development' && <WebSocketDebugger />}
             </body>
         </html>
     )

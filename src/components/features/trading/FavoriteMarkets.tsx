@@ -10,10 +10,10 @@ import { useHyperliquidMarkets } from '@/hooks/useHyperliquidMarkets'
 import numeral from 'numeral'
 import { formatAmount } from '@/utils'
 
-export default function FavoriteMarkets() {
+function FavoriteMarkets() {
     const [selectedFavoriteUnit, setSelectedFavoriteUnit] = useState<'$' | '%'>('$')
-    const { favoriteMarkets, setCurrentSymbol } = useUiStore()
-    const { setSelectedMarket } = useMarketStore()
+    const favoriteMarkets = useUiStore((state) => state.favoriteMarkets)
+    const setSelectedMarket = useMarketStore((state) => state.setSelectedMarket)
     const { markets = [] } = useHyperliquidMarkets('all')
 
     // get full market data for favorites
@@ -44,19 +44,21 @@ export default function FavoriteMarkets() {
                     selectedFavoriteUnit === '$' ? formatAmount(market.px) : numeral(market.changePercent24h).divide(100).format('+0,0.[00]%')
                 const valueColor = market.changePercent24h >= 0 ? 'text-hlt-13' : 'text-hlt-12'
                 return (
-                    <div key={`${market.symbol}-${market.type}`} className="group relative flex items-center gap-2 rounded-sm p-2 hover:bg-hlb-15">
-                        <div
-                            className="flex cursor-pointer items-center gap-2"
-                            onClick={() => {
-                                setCurrentSymbol(market.symbol)
-                                setSelectedMarket(market)
-                            }}>
-                            <p className="text-hlt-2">{market.symbol}-USD</p>
+                    <button
+                        onClick={() => {
+                            setSelectedMarket(market)
+                        }}
+                        key={`${market.symbol}-${market.type}`}
+                        className="group relative flex items-center gap-2 rounded-sm p-2 hover:bg-hlb-15">
+                        <div className="flex cursor-pointer items-center gap-2">
+                            <p className="truncate text-hlt-2">{market.symbol}-USD</p>
                             <p className={valueColor}>{displayValue}</p>
                         </div>
-                    </div>
+                    </button>
                 )
             })}
         </div>
     )
 }
+
+export default FavoriteMarkets

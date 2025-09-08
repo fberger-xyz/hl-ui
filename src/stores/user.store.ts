@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { useWsStore } from '@/stores/ws.store'
 import type { Balance, Position, OpenOrder, TwapOrder, Trade, FundingPayment, OrderHistory, ClearinghouseState } from '@/types/user-account.types'
 
 // event types for websocket messages
@@ -19,15 +18,6 @@ interface UserOrderEvent {
 }
 
 type UserEvent = UserFillEvent | UserOrderEvent
-
-interface FillData {
-    time: number | string
-    coin: string
-    side: 'B' | 'S'
-    px: number | string
-    sz: number | string
-    fee?: number | string
-}
 
 interface UserState {
     // wallet connection
@@ -163,42 +153,14 @@ export const useUserStore = create<UserState>((set, get) => ({
     },
 
     subscribeToUser: () => {
-        const address = get().address
-        // guard: no address
-        if (!address) return
-
-        const wsStore = useWsStore.getState()
-
-        // subscribe to user events
-        wsStore.subscribe(`userEvents:${address}`, (data) => {
-            get().handleUserEvent(data as UserEvent)
-        })
-
-        // subscribe to user fills
-        wsStore.subscribe(`userFills:${address}`, (data) => {
-            if (Array.isArray(data)) {
-                const trades: Trade[] = data.map((fill: FillData) => ({
-                    time: Number(fill.time),
-                    coin: String(fill.coin),
-                    side: fill.side === 'B' ? ('buy' as const) : ('sell' as const),
-                    price: String(fill.px),
-                    size: String(fill.sz),
-                    value: (parseFloat(String(fill.px)) * parseFloat(String(fill.sz))).toString(),
-                    fee: String(fill.fee || '0'),
-                }))
-                set((state) => ({
-                    tradeHistory: [...trades, ...state.tradeHistory].slice(0, 100),
-                }))
-            }
-        })
+        // subscriptions are handled by useHyperliquidUserAccount hook
+        // this is now just a placeholder for compatibility
+        console.log('User subscriptions are handled by useHyperliquidUserAccount hook')
     },
 
     unsubscribeFromUser: () => {
-        const address = get().address
-        // guard: no address
-        if (!address) return
-
-        // unsubscribe handled by ref counting in ws store
+        // subscriptions are handled by useHyperliquidUserAccount hook
+        console.log('User unsubscriptions are handled by useHyperliquidUserAccount hook')
     },
 
     clearUserData: () => {

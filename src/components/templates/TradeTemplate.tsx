@@ -1,8 +1,9 @@
 'use client'
 
 import { cn } from '@/utils'
-import { ReactNode } from 'react'
+import { ReactNode, memo } from 'react'
 import { ErrorBoundary } from 'react-error-boundary'
+import { useIsDesktop } from '@/hooks/useMediaQuery'
 
 export function ErrorBoundaryTemplate(props: { error: Error | string; resetErrorBoundary?: () => void; fallbackMessage?: string }) {
     const errorMessage =
@@ -30,7 +31,7 @@ export function ErrorBoundaryTemplate(props: { error: Error | string; resetError
 }
 
 // better to keep it simple. one template per usage
-export function TradeTemplateMobile(props: {
+const TradeTemplateMobile = memo(function TradeTemplateMobile(props: {
     pairs: {
         favorites: ReactNode
         selector: ReactNode
@@ -64,14 +65,7 @@ export function TradeTemplateMobile(props: {
             </section>
 
             {/* chart */}
-            <section className="relative h-[400px] overflow-hidden rounded bg-hlb-21">
-                <ErrorBoundary
-                    fallbackRender={({ error, resetErrorBoundary }) => (
-                        <ErrorBoundaryTemplate error={error} resetErrorBoundary={resetErrorBoundary} fallbackMessage="Error loading chart data" />
-                    )}>
-                    {props.pairs.charts}
-                </ErrorBoundary>
-            </section>
+            <section className="relative h-[400px] overflow-hidden rounded bg-hlb-21">{props.pairs.charts}</section>
 
             {/* orderbook/trades */}
             <section className="relative h-[400px] overflow-hidden rounded">
@@ -104,10 +98,10 @@ export function TradeTemplateMobile(props: {
             </section>
         </main>
     )
-}
+})
 
 // better to keep it simple. one template per usage
-export function TradeTemplateDesktop(props: {
+const TradeTemplateDesktop = memo(function TradeTemplateDesktop(props: {
     pairs: {
         favorites: ReactNode
         selector: ReactNode
@@ -141,18 +135,11 @@ export function TradeTemplateDesktop(props: {
                                 {props.pairs.selector}
                             </ErrorBoundary>
                         </div>
-                        <div className="relative h-full max-h-[560px] overflow-hidden rounded bg-hlb-21">
-                            <ErrorBoundary
-                                fallbackRender={({ error, resetErrorBoundary }) => (
-                                    <ErrorBoundaryTemplate error={error} resetErrorBoundary={resetErrorBoundary} />
-                                )}>
-                                {props.pairs.charts}
-                            </ErrorBoundary>
-                        </div>
+                        <div className="relative h-full max-h-[560px] overflow-hidden rounded bg-hlb-21">{props.pairs.charts}</div>
                     </section>
 
                     {/* orderbook + trades. fixed size copy pasted from hl ui */}
-                    <aside className="h-full max-h-[670px] w-[275px] rounded">
+                    <aside className="h-full max-h-[670px] w-[285px] rounded">
                         <ErrorBoundary
                             fallbackRender={({ error, resetErrorBoundary }) => (
                                 <ErrorBoundaryTemplate error={error} resetErrorBoundary={resetErrorBoundary} />
@@ -174,7 +161,7 @@ export function TradeTemplateDesktop(props: {
             </section>
 
             {/* trade panel. fixed width copy pasted from hl ui */}
-            <aside className="w-[275px] flex-shrink-0 rounded">
+            <aside className="w-[285px] flex-shrink-0 rounded">
                 <ErrorBoundary
                     fallbackRender={({ error, resetErrorBoundary }) => (
                         <ErrorBoundaryTemplate error={error} resetErrorBoundary={resetErrorBoundary} />
@@ -184,10 +171,10 @@ export function TradeTemplateDesktop(props: {
             </aside>
         </main>
     )
-}
+})
 
 // better to keep it simple. one template per usage
-export function TradeTemplate(props: {
+const TradeTemplate = memo(function TradeTemplate(props: {
     pairs: {
         favorites: ReactNode
         selector: ReactNode
@@ -198,10 +185,11 @@ export function TradeTemplate(props: {
     panel: ReactNode
     className?: string
 }) {
-    return (
-        <>
-            <TradeTemplateMobile {...props} />
-            <TradeTemplateDesktop {...props} />
-        </>
-    )
-}
+    const isDesktop = useIsDesktop()
+
+    // only render one template to avoid duplicate component instances
+    // this prevents multiple chart instances and reduces memory usage
+    return isDesktop ? <TradeTemplateDesktop {...props} /> : <TradeTemplateMobile {...props} />
+})
+
+export { TradeTemplate, TradeTemplateDesktop, TradeTemplateMobile }

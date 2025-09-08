@@ -146,20 +146,47 @@ class HyperliquidSharedWebSocketClient {
         const { type, coin, interval, user } = options
 
         switch (type) {
-            case HyperliquidWebSocketSubscriptionType.CANDLE:
-                return coin && interval ? `candle:${coin}:${interval}` : `candle:default`
+            // market data
+            case HyperliquidWebSocketSubscriptionType.ALL_MIDS:
+                return 'allMids'
             case HyperliquidWebSocketSubscriptionType.L2_BOOK:
                 return coin ? `l2Book:${coin}` : `l2Book:default`
             case HyperliquidWebSocketSubscriptionType.TRADES:
                 return coin ? `trades:${coin}` : `trades:default`
+            case HyperliquidWebSocketSubscriptionType.CANDLE:
+                return coin && interval ? `candle:${coin}:${interval}` : `candle:default`
+            case HyperliquidWebSocketSubscriptionType.BBO:
+                return coin ? `bbo:${coin}` : `bbo:default`
+
+            // asset context
+            case HyperliquidWebSocketSubscriptionType.ACTIVE_ASSET_CTX:
+                return coin ? `activeAssetCtx:${coin}` : `activeAssetCtx:default`
+            case HyperliquidWebSocketSubscriptionType.ACTIVE_ASSET_DATA:
+                return user && coin ? `activeAssetData:${user}:${coin}` : `activeAssetData:default`
+
+            // user data
+            case HyperliquidWebSocketSubscriptionType.NOTIFICATION:
+                return user ? `notification:${user}` : `notification:default`
+            case HyperliquidWebSocketSubscriptionType.WEB_DATA2:
+                return user ? `webData2:${user}` : `webData2:default`
+            case HyperliquidWebSocketSubscriptionType.ORDER_UPDATES:
+                return user ? `orderUpdates:${user}` : `orderUpdates:default`
             case HyperliquidWebSocketSubscriptionType.USER_EVENTS:
                 return user ? `userEvents:${user}` : `userEvents:default`
             case HyperliquidWebSocketSubscriptionType.USER_FILLS:
                 return user ? `userFills:${user}` : `userFills:default`
-            case HyperliquidWebSocketSubscriptionType.USER_ORDERS:
-                return user ? `userOrders:${user}` : `userOrders:default`
-            case HyperliquidWebSocketSubscriptionType.ALL_MIDS:
-                return 'allMids'
+            case HyperliquidWebSocketSubscriptionType.USER_FUNDINGS:
+                return user ? `userFundings:${user}` : `userFundings:default`
+            case HyperliquidWebSocketSubscriptionType.USER_NON_FUNDING_LEDGER_UPDATES:
+                return user ? `userNonFundingLedgerUpdates:${user}` : `userNonFundingLedgerUpdates:default`
+            case HyperliquidWebSocketSubscriptionType.USER_TWAP_SLICE_FILLS:
+                return user ? `userTwapSliceFills:${user}` : `userTwapSliceFills:default`
+            case HyperliquidWebSocketSubscriptionType.USER_TWAP_HISTORY:
+                return user ? `userTwapHistory:${user}` : `userTwapHistory:default`
+            // undocumented but used by hyperliquid client
+            // case HyperliquidWebSocketSubscriptionType.USER_HISTORICAL_ORDERS:
+            //     return user ? `userHistoricalOrders:${user}` : `userHistoricalOrders:default`
+
             default:
                 return `${type}:${coin || user || 'default'}`
         }
@@ -173,6 +200,11 @@ class HyperliquidSharedWebSocketClient {
     getConnectionState(): 'connecting' | 'connected' | 'disconnected' | 'error' {
         if (this.fallbackClient) return this.fallbackClient.getConnectionState()
         return this.isSharedWorkerConnected ? 'connected' : 'disconnected'
+    }
+
+    // alias for compatibility with direct client
+    getConnectionStatus(): 'connecting' | 'connected' | 'disconnected' | 'error' {
+        return this.getConnectionState()
     }
 
     getStats(
@@ -206,7 +238,10 @@ class HyperliquidSharedWebSocketClient {
         const port = this.port
         this.port.onmessage = (event: MessageEvent) => {
             if (event.data.type === 'stats') {
-                callback(event.data.data)
+                callback({
+                    ...event.data.data,
+                    mode: 'sharedworker',
+                })
                 port.onmessage = originalOnMessage
             } else if (originalOnMessage) {
                 originalOnMessage.call(port, event)
@@ -235,6 +270,8 @@ class HyperliquidSharedWebSocketClient {
             if (options.coin) subscription.coin = options.coin
             if (options.interval) subscription.interval = options.interval
             if (options.user) subscription.user = options.user
+            if (options.nSigFigs) subscription.nSigFigs = options.nSigFigs
+            if (options.mantissa) subscription.mantissa = options.mantissa
 
             this.port.postMessage({
                 type: 'subscribe',
@@ -267,6 +304,12 @@ class HyperliquidSharedWebSocketClient {
 
     reconnect() {
         if (this.fallbackClient) return this.fallbackClient.reconnect()
+    }
+
+    onError(callback: (error: Error) => void): () => void {
+        if (this.fallbackClient) return this.fallbackClient.onError(callback)
+        // sharedworker handles errors internally, return noop cleanup
+        return () => {}
     }
 
     destroy() {

@@ -1,6 +1,6 @@
 'use client'
 
-import { cn, withMemo } from '@/utils'
+import { cn } from '@/utils'
 import { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
 import { IconIds, NuqsKeys, TradeOrderbookAndTradesTabs } from '@/enums'
 import { useQueryState } from 'nuqs'
@@ -13,6 +13,7 @@ import Trades from '@/components/features/trading/Trades'
 const TABS: TradeOrderbookAndTradesTabs[] = [TradeOrderbookAndTradesTabs.ORDERBOOK, TradeOrderbookAndTradesTabs.TRADES]
 
 function OrderbookAndTrades() {
+    console.log('render: OrderbookAndTrades', new Date())
     const [selectedTab, setSelectedTab] = useQueryState(NuqsKeys.ORDERBOOK_AND_TRADES_TABLE, {
         defaultValue: TradeOrderbookAndTradesTabs.ORDERBOOK,
         parse: (value) =>
@@ -50,7 +51,7 @@ function OrderbookAndTrades() {
     }, [updateBorderPosition])
 
     return (
-        <section className="flex h-full flex-col overflow-hidden rounded-b">
+        <section className="flex h-full w-full flex-col overflow-hidden rounded-b">
             {/* Tab Headers */}
             <nav className="relative flex h-[42px] flex-shrink-0 rounded-t border-b border-hlr-10 bg-hlb-21" role="tablist">
                 {TABS.map((item, index) => (
@@ -97,13 +98,20 @@ function OrderbookAndTrades() {
                 />
             </nav>
 
-            {/* Tab Content */}
+            {/* Tab Content - only render active tab */}
             <section className="flex min-h-0 flex-1 flex-col rounded-b bg-hlb-21" role="tabpanel">
-                {selectedTab === TradeOrderbookAndTradesTabs.ORDERBOOK && <Orderbook />}
-                {selectedTab === TradeOrderbookAndTradesTabs.TRADES && <Trades />}
+                {selectedTab === TradeOrderbookAndTradesTabs.ORDERBOOK ? (
+                    <div className="flex flex-1 flex-col">
+                        <Orderbook />
+                    </div>
+                ) : (
+                    <div className="flex flex-1 flex-col">
+                        <Trades />
+                    </div>
+                )}
             </section>
         </section>
     )
 }
 
-export default withMemo(OrderbookAndTrades)
+export default OrderbookAndTrades

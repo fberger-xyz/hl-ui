@@ -2,7 +2,8 @@
 
 import * as hl from '@nktkas/hyperliquid'
 import { Wallet } from 'ethers'
-import type { AssetInfo, HyperliquidOrder } from '@/types/hyperliquid.types'
+import type { AssetInfo, HyperliquidOrder, CandleInterval } from '@/types/hyperliquid.types'
+import { logger } from '@/utils/logger.util'
 
 export class HyperliquidSDKService {
     private static instance: HyperliquidSDKService
@@ -10,6 +11,13 @@ export class HyperliquidSDKService {
     private infoClient: hl.InfoClient
     private exchangeClient: hl.ExchangeClient | null = null
     private assetIndices: Map<string, number> = new Map()
+
+    // dedup: prevent concurrent user data fetches
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private pendingUserDataRequests: Map<string, Promise<any>> = new Map()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    private userPortfolioCache: Map<string, { data: any; timestamp: number }> = new Map()
+    private readonly USER_DATA_CACHE_TTL = 10000 // 10 seconds
 
     private constructor() {
         this.transport = new hl.HttpTransport({
@@ -71,58 +79,70 @@ export class HyperliquidSDKService {
         return index
     }
 
-    async getUserState(address: string): Promise<unknown | null> {
+    async getUserState(address: string): Promise<hl.PerpsClearinghouseState | null> {
         try {
-            return await this.infoClient.clearinghouseState({ user: address as `0x${string}` })
-        } catch {
-            // console.error(error)
+            const state = await this.infoClient.clearinghouseState({ user: address as `0x${string}` })
+            return state
+        } catch (error) {
+            logger.error('Failed to get user state:', error)
             return null
         }
     }
 
-    async getOpenOrders(address: string): Promise<unknown[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async getOpenOrders(address: string): Promise<any[]> {
         try {
-            return await this.infoClient.openOrders({ user: address as `0x${string}` })
-        } catch {
-            // console.error(error)
+            const orders = await this.infoClient.openOrders({ user: address as `0x${string}` })
+            return orders
+        } catch (error) {
+            logger.error('Failed to get open orders:', error)
             return []
         }
     }
 
-    async getUserFills(address: string): Promise<unknown[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async getUserFills(address: string): Promise<any[]> {
         try {
-            return await this.infoClient.userFills({ user: address as `0x${string}` })
-        } catch {
-            // console.error(error)
+            const fills = await this.infoClient.userFills({ user: address as `0x${string}` })
+            return fills
+        } catch (error) {
+            logger.error('Failed to get user fills:', error)
             return []
         }
     }
 
-    async getOrderbook(symbol: string): Promise<unknown> {
+    async getOrderbook(symbol: string): Promise<hl.Book> {
         try {
-            return await this.infoClient.l2Book({ coin: symbol })
-        } catch {
-            // console.error(error)
-            return { coin: symbol, levels: [[], []], time: Date.now() }
+            const book = await this.infoClient.l2Book({ coin: symbol })
+            return book
+        } catch (error) {
+            logger.error('Failed to get orderbook:', error)
+            // return empty book in compatible format
+            return {
+                coin: symbol,
+                levels: [[], []],
+                time: Date.now(),
+            } as unknown as hl.Book
         }
     }
 
-    async getCandles(symbol: string, interval: string = '1m'): Promise<unknown[]> {
+    async getCandles(symbol: string, interval: CandleInterval = '1m'): Promise<hl.Candle[]> {
         try {
-            return await this.infoClient.candleSnapshot({
+            const candles = await this.infoClient.candleSnapshot({
                 coin: symbol,
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 interval: interval as any,
                 startTime: Date.now() - 24 * 60 * 60 * 1000, // last 24h
                 endTime: Date.now(),
             })
-        } catch {
-            // console.error(error)
+            return candles
+        } catch (error) {
+            logger.error('Failed to get candles:', error)
             return []
         }
     }
 
-    async placeOrder(order: HyperliquidOrder): Promise<unknown> {
+    async placeOrder(order: HyperliquidOrder): Promise<hl.OrderResponse | null> {
         // guard: no exchange client
         if (!this.exchangeClient) throw new Error('Exchange client not initialized. Please connect wallet first.')
 
@@ -141,23 +161,25 @@ export class HyperliquidSDKService {
                 p: order.price || '0',
             }
 
-            return await this.exchangeClient.order({
+            const response = await this.exchangeClient.order({
                 orders: [hlOrder],
                 grouping: 'na',
             })
+            return response
         } catch (error) {
+            logger.error('Failed to place order:', error)
             const message = error instanceof Error ? error.message : 'Failed to place order'
             throw new Error(message)
         }
     }
 
-    async cancelOrder(orderId: string, asset: string): Promise<unknown> {
+    async cancelOrder(orderId: string, asset: string): Promise<hl.CancelResponse | null> {
         // guard: no exchange client
         if (!this.exchangeClient) throw new Error('Exchange client not initialized')
 
         try {
             const assetIndex = this.getAssetIndex(asset)
-            return await this.exchangeClient.cancel({
+            const response = await this.exchangeClient.cancel({
                 cancels: [
                     {
                         a: assetIndex,
@@ -165,13 +187,15 @@ export class HyperliquidSDKService {
                     },
                 ],
             })
+            return response
         } catch (error) {
+            logger.error('Failed to cancel order:', error)
             const message = error instanceof Error ? error.message : 'Failed to cancel order'
             throw new Error(message)
         }
     }
 
-    async cancelAllOrders(asset?: string): Promise<unknown> {
+    async cancelAllOrders(asset?: string): Promise<hl.CancelResponse | null> {
         // guard: no exchange client
         if (!this.exchangeClient) throw new Error('Exchange client not initialized')
 
@@ -191,6 +215,7 @@ export class HyperliquidSDKService {
             // cancel all assets
             return await this.exchangeClient.cancel({ cancels: [] })
         } catch (error) {
+            logger.error('Failed to cancel all orders:', error)
             const message = error instanceof Error ? error.message : 'Failed to cancel all orders'
             throw new Error(message)
         }
@@ -205,91 +230,132 @@ export class HyperliquidSDKService {
                 symbol: asset.name,
             }))
         } catch {
-            // console.error(error)
+            // logger.error(error)
             return []
         }
     }
 
     async getAllMids(): Promise<Record<string, string>> {
         try {
-            return await this.infoClient.allMids()
-        } catch {
-            // console.error(error)
+            const mids = await this.infoClient.allMids()
+            return mids
+        } catch (error) {
+            logger.error('Failed to get all mids:', error)
             return {}
         }
     }
 
-    async getUserPortfolio(address: string): Promise<unknown | null> {
-        try {
-            return await this.infoClient.portfolio({ user: address as `0x${string}` })
-        } catch {
-            // console.error(error)
-            return null
-        }
+    async getUserPortfolio(address: string): Promise<hl.PortfolioPeriods | null> {
+        const cacheKey = `portfolio:${address}`
+
+        // check cache
+        const cachedPortfolio = this.userPortfolioCache.get(cacheKey)
+        if (cachedPortfolio && Date.now() - cachedPortfolio.timestamp < this.USER_DATA_CACHE_TTL) return cachedPortfolio.data
+
+        // check pending request
+        const pendingPortfolioRequest = this.pendingUserDataRequests.get(cacheKey)
+        if (pendingPortfolioRequest) return pendingPortfolioRequest
+
+        // create new portfolio request
+        const portfolioRequestPromise = this.infoClient
+            .portfolio({ user: address as `0x${string}` })
+            .then((portfolioData) => {
+                this.userPortfolioCache.set(cacheKey, { data: portfolioData, timestamp: Date.now() })
+                return portfolioData
+            })
+            .catch((error) => {
+                logger.error('Failed to get user portfolio:', error)
+                return null
+            })
+            .finally(() => this.pendingUserDataRequests.delete(cacheKey))
+
+        this.pendingUserDataRequests.set(cacheKey, portfolioRequestPromise)
+        return portfolioRequestPromise
     }
 
-    async getHistoricalOrders(address: string): Promise<unknown[]> {
+    async getHistoricalOrders(address: string): Promise<hl.OrderStatus<hl.FrontendOrder>[]> {
+        const cacheKey = `historicalOrders:${address}`
+
+        // check pending request
+        const pendingHistoricalOrdersRequest = this.pendingUserDataRequests.get(cacheKey)
+        if (pendingHistoricalOrdersRequest) return pendingHistoricalOrdersRequest
+
+        // create new historical orders request
+        const historicalOrdersPromise = this.infoClient
+            .historicalOrders({ user: address as `0x${string}` })
+            .then((ordersData) => ordersData)
+            .catch((error) => {
+                logger.error('Failed to get historical orders:', error)
+                return []
+            })
+            .finally(() => this.pendingUserDataRequests.delete(cacheKey))
+
+        this.pendingUserDataRequests.set(cacheKey, historicalOrdersPromise)
+        return historicalOrdersPromise
+    }
+
+    async getUserFunding(address: string, startTime?: number, endTime?: number): Promise<hl.UserFundingUpdate[]> {
         try {
-            return await this.infoClient.historicalOrders({ user: address as `0x${string}` })
-        } catch {
-            // console.error(error)
+            const params: hl.UserFundingParameters = {
+                user: address as `0x${string}`,
+                startTime: startTime ?? 0,
+                endTime: endTime ?? Date.now(),
+            }
+            const funding = await this.infoClient.userFunding(params)
+            return funding
+        } catch (error) {
+            logger.error('Failed to get user funding:', error)
             return []
         }
     }
 
-    async getUserFunding(address: string, startTime?: number, endTime?: number): Promise<unknown[]> {
+    async getTwapHistory(address: string): Promise<hl.TwapHistory[]> {
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const params: any = { user: address as `0x${string}` }
-            if (startTime !== undefined) params.startTime = startTime
-            if (endTime !== undefined) params.endTime = endTime
-            return await this.infoClient.userFunding(params)
-        } catch {
-            // console.error(error)
+            const history = await this.infoClient.twapHistory({ user: address as `0x${string}` })
+            return history
+        } catch (error) {
+            logger.error('Failed to get TWAP history:', error)
             return []
         }
     }
 
-    async getTwapHistory(address: string): Promise<unknown[]> {
+    async getUserTwapSliceFills(address: string): Promise<hl.TwapSliceFill[]> {
         try {
-            return await this.infoClient.twapHistory({ user: address as `0x${string}` })
-        } catch {
-            // console.error(error)
+            const fills = await this.infoClient.userTwapSliceFills({ user: address as `0x${string}` })
+            return fills
+        } catch (error) {
+            logger.error('Failed to get TWAP slice fills:', error)
             return []
         }
     }
 
-    async getUserTwapSliceFills(address: string): Promise<unknown[]> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async getUserFillsByTime(address: string, startTime?: number, endTime?: number): Promise<any[]> {
         try {
-            return await this.infoClient.userTwapSliceFills({ user: address as `0x${string}` })
-        } catch {
-            // console.error(error)
+            const params: hl.UserFillsByTimeParameters = {
+                user: address as `0x${string}`,
+                startTime: startTime ?? 0,
+                endTime: endTime ?? Date.now(),
+            }
+            const fills = await this.infoClient.userFillsByTime(params)
+            return fills
+        } catch (error) {
+            logger.error('Failed to get user fills by time:', error)
             return []
         }
     }
 
-    async getUserFillsByTime(address: string, startTime?: number, endTime?: number): Promise<unknown[]> {
+    async getUserNonFundingLedgerUpdates(address: string, startTime?: number, endTime?: number): Promise<hl.UserNonFundingLedgerUpdate[]> {
         try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const params: any = { user: address as `0x${string}` }
-            if (startTime !== undefined) params.startTime = startTime
-            if (endTime !== undefined) params.endTime = endTime
-            return await this.infoClient.userFillsByTime(params)
-        } catch {
-            // console.error(error)
-            return []
-        }
-    }
-
-    async getUserNonFundingLedgerUpdates(address: string, startTime?: number, endTime?: number): Promise<unknown[]> {
-        try {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const params: any = { user: address as `0x${string}` }
-            if (startTime !== undefined) params.startTime = startTime
-            if (endTime !== undefined) params.endTime = endTime
-            return await this.infoClient.userNonFundingLedgerUpdates(params)
-        } catch {
-            // console.error(error)
+            const params: hl.UserNonFundingLedgerUpdatesParameters = {
+                user: address as `0x${string}`,
+                startTime: startTime ?? 0,
+                endTime: endTime ?? Date.now(),
+            }
+            const updates = await this.infoClient.userNonFundingLedgerUpdates(params)
+            return updates
+        } catch (error) {
+            logger.error('Failed to get non-funding ledger updates:', error)
             return []
         }
     }

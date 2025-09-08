@@ -1,12 +1,13 @@
 import { create } from 'zustand'
-import { useWsStore } from '@/stores/ws.store'
 import type { L2BookData, Trade } from '@/types/hyperliquid.types'
 import type { OrderbookData, MarketKPIs, MarketData } from '@/types/trading.types'
+import { logger } from '@/utils/logger.util'
 
 interface MarketState {
     // selected market
     selectedMarket: MarketData | null
     setSelectedMarket: (market: MarketData) => void
+    initializeDefaultMarket: (markets: MarketData[]) => void
 
     // all market prices
     allPrices: Record<string, string>
@@ -52,6 +53,19 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         // set new market and subscribe
         set({ selectedMarket: market })
         if (market) state.subscribeToMarket(market.symbol)
+    },
+
+    initializeDefaultMarket: (markets) => {
+        const state = get()
+        // skip if already have a market selected
+        if (state.selectedMarket || markets.length === 0) return
+
+        // prefer btc, otherwise first market
+        const btcMarket = markets.find((m) => m.symbol === 'BTC' && m.type === 'perp')
+        const defaultMarket = btcMarket || markets[0]
+        if (defaultMarket) {
+            state.setSelectedMarket(defaultMarket)
+        }
     },
 
     updateAllPrices: (prices) => set({ allPrices: prices }),
@@ -101,38 +115,10 @@ export const useMarketStore = create<MarketState>((set, get) => ({
         }))
     },
 
-    subscribeToMarket: (symbol: string) => {
-        const wsStore = useWsStore.getState()
-
-        // parallel subscriptions for better performance
-        const unsubOrderbook = wsStore.subscribe(`l2Book:${symbol}`, (data) => {
-            get().updateOrderbook(data as L2BookData)
-        })
-
-        // separate subscription per data type
-        const unsubTrades = wsStore.subscribe(`trades:${symbol}`, (data) => {
-            get().addTrades(data as Trade | Trade[])
-        })
-
-        // global price feed for all symbols
-        const unsubPrices = wsStore.subscribe('allMids', (data) => {
-            const midsData = data as { mids?: Record<string, string> }
-            if (midsData?.mids) {
-                get().updateAllPrices(midsData.mids)
-                // update kpis from price
-                const px = parseFloat(midsData.mids[symbol])
-                if (px) get().updateMarketKPIs({ markPx: px, oraclePx: px })
-            }
-        })
-
-        // store cleanup functions for clean unsubscribe
-        set({
-            clearSubscriptions: () => {
-                unsubOrderbook()
-                unsubTrades()
-                unsubPrices()
-            },
-        })
+    subscribeToMarket: () => {
+        // subscriptions are handled directly by hooks
+        // this is just a placeholder for compatibility
+        logger.debug('Market subscriptions are handled by individual hooks')
     },
 
     unsubscribeFromMarket: () => {
@@ -152,11 +138,4 @@ export const useMarketStore = create<MarketState>((set, get) => ({
     clearSubscriptions: () => {},
 }))
 
-// global price subscription for all markets
-if (typeof window !== 'undefined') {
-    const wsStore = useWsStore.getState()
-    wsStore.subscribe('allMids', (data) => {
-        const midsData = data as { mids?: Record<string, string> }
-        if (midsData?.mids) useMarketStore.getState().updateAllPrices(midsData.mids)
-    })
-}
+// note: price subscriptions are handled by useHyperliquidMarkets hook

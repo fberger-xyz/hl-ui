@@ -1,31 +1,31 @@
 'use client'
 
-import { useMemo, useEffect } from 'react'
+import { useMemo, memo } from 'react'
 import { useHyperliquidOrderbook } from '@/hooks/useHyperliquidOrderbook'
 import numeral from 'numeral'
-import { formatAmount, withMemo } from '@/utils'
+import { formatAmount } from '@/utils'
 import { useMarketStore } from '@/stores/market.store'
 import { showNotImplementedToast } from '@/utils/toast'
 
-interface OrderbookProps {
-    levels?: number
-}
+const LEVELS = 12
+function Orderbook() {
+    console.log('render: Orderbook', new Date())
 
-function Orderbook({ levels = 11 }: OrderbookProps = {}) {
     // get symbol directly from store
     const selectedMarket = useMarketStore((state) => state.selectedMarket)
-    const subscribeToMarket = useMarketStore((state) => state.subscribeToMarket)
     const symbol = selectedMarket?.symbol || 'BTC'
-
-    // ensure market subscription is active
-    useEffect(() => {
-        if (!symbol) return
-        subscribeToMarket(symbol)
-    }, [symbol, subscribeToMarket])
 
     const { bids, asks, spread, spreadPercentage, isLoading } = useHyperliquidOrderbook({
         symbol,
-        levels,
+        levels: LEVELS,
+    })
+
+    // log what data changed
+    console.log('Orderbook data:', {
+        bidsLength: bids.length,
+        asksLength: asks.length,
+        spread,
+        isLoading,
     })
 
     // calculate max total for depth visualization
@@ -55,7 +55,7 @@ function Orderbook({ levels = 11 }: OrderbookProps = {}) {
             {/* Asks (sells) - highest price at top, best ask at bottom */}
             <div className="flex-1 overflow-hidden" role="rowgroup" aria-label="Ask orders">
                 <div className="flex h-full flex-col-reverse gap-0.5">
-                    {asks.slice(0, levels).map((ask, index) => {
+                    {asks.slice(0, LEVELS).map((ask, index) => {
                         const depth = (parseFloat(ask.total || ask.sz) / maxTotal) * 100
                         return (
                             <button
@@ -98,7 +98,7 @@ function Orderbook({ levels = 11 }: OrderbookProps = {}) {
             {/* Bids (buys) */}
             <div className="flex-1 overflow-hidden" role="rowgroup" aria-label="Bid orders">
                 <div className="flex h-full flex-col gap-0.5">
-                    {bids.slice(0, levels).map((bid, index) => {
+                    {bids.slice(0, LEVELS).map((bid, index) => {
                         const depth = (parseFloat(bid.total || bid.sz) / maxTotal) * 100
                         return (
                             <button
@@ -128,4 +128,4 @@ function Orderbook({ levels = 11 }: OrderbookProps = {}) {
     )
 }
 
-export default withMemo(Orderbook)
+export default memo(Orderbook)

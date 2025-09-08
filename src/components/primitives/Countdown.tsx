@@ -108,20 +108,3 @@ export function Countdown({ target, format = 'hh:mm:ss', onComplete, className, 
         </div>
     )
 }
-
-// export convenience components for common use cases
-export function CountdownToNextHour(props: Omit<CountdownProps, 'target'>) {
-    return <Countdown {...props} target="nextHour" />
-}
-
-export function CountdownToNextDay(props: Omit<CountdownProps, 'target'>) {
-    return <Countdown {...props} target="nextDay" />
-}
-
-export function CountdownToNextWeek(props: Omit<CountdownProps, 'target'>) {
-    return <Countdown {...props} target="nextWeek" />
-}
-
-export function CountdownToNextMonth(props: Omit<CountdownProps, 'target'>) {
-    return <Countdown {...props} target="nextMonth" />
-}

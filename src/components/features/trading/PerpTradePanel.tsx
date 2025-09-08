@@ -1,6 +1,6 @@
 'use client'
 
-import { cn, withMemo } from '@/utils'
+import { cn } from '@/utils'
 import { useRef, useEffect, useState, useLayoutEffect, useCallback } from 'react'
 import { IconIds, NuqsKeys, TradePanelTabs, TradeSide } from '@/enums'
 import { useQueryState } from 'nuqs'
@@ -176,4 +176,4 @@ function PerpTradePanel() {
     )
 }
 
-export default withMemo(PerpTradePanel)
+export default PerpTradePanel

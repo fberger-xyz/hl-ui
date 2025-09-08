@@ -2,7 +2,7 @@ import type { NextConfig } from 'next'
 import { execSync } from 'child_process'
 
 const nextConfig: NextConfig = {
-    reactStrictMode: true, // helps catch bugs in development
+    reactStrictMode: false, // temporarily disabled to debug rendering
     productionBrowserSourceMaps: false, // save ~30% bundle size
     // ensure fast refresh works properly
     images: {

@@ -35,10 +35,6 @@ interface UiState {
     selectedTradeSide: TradeSide
     setSelectedTradeSide: (side: TradeSide) => void
 
-    // current symbol
-    currentSymbol: string
-    setCurrentSymbol: (symbol: string) => void
-
     // favorites
     favoriteMarkets: FavoriteMarket[]
     addFavoriteMarket: (market: FavoriteMarket) => void
@@ -71,9 +67,6 @@ export const useUiStore = create<UiState>()(
 
             selectedTradeSide: TradeSide.BUY,
             setSelectedTradeSide: (side) => set({ selectedTradeSide: side }),
-
-            currentSymbol: 'BTC',
-            setCurrentSymbol: (symbol) => set({ currentSymbol: symbol }),
 
             favoriteMarkets: [],
 
@@ -164,7 +157,6 @@ export const useUiStore = create<UiState>()(
                 selectedTradePanelTab: state.selectedTradePanelTab,
                 selectedTradeSide: state.selectedTradeSide,
                 favoriteMarkets: state.favoriteMarkets,
-                currentSymbol: state.currentSymbol,
             }),
         },
     ),
