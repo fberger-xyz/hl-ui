@@ -174,7 +174,8 @@ export default async function RootLayout({
                 </PWAProvider>
                 <Analytics />
                 <ChunkErrorHandler />
-                {process.env.NODE_ENV === 'development' && <WebSocketDebugger />}
+                {/* {process.env.NODE_ENV === 'development' && <WebSocketDebugger />} */}
+                <WebSocketDebugger />
             </body>
         </html>
     )
