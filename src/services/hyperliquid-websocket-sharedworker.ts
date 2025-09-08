@@ -67,6 +67,8 @@ class HyperliquidSharedWebSocketClient {
                     case 'connected':
                         this.isSharedWorkerConnected = true
                         if (this.isDev) console.log('[SharedWSClient] Connected via SharedWorker')
+                        // ensure ping interval is running when connected
+                        if (!this.pingInterval) this.startPingInterval()
                         break
 
                     case 'disconnected':
@@ -87,7 +89,9 @@ class HyperliquidSharedWebSocketClient {
 
                     case 'error':
                         console.error('[SharedWSClient] SharedWorker error:', message.data)
-                        this.initFallback()
+                        // only fallback on critical errors, not connection issues
+                        const errorMsg = String(message.data || '')
+                        if (errorMsg.includes('SharedWorker') || errorMsg.includes('not supported')) this.initFallback()
                         break
                 }
             }
@@ -132,7 +136,16 @@ class HyperliquidSharedWebSocketClient {
     private startPingInterval() {
         this.stopPingInterval()
         this.pingInterval = setInterval(() => {
-            if (this.port) this.port.postMessage({ type: 'ping' })
+            if (this.port) {
+                try {
+                    this.port.postMessage({ type: 'ping' })
+                } catch (err) {
+                    console.error('[SharedWSClient] Failed to send ping:', err)
+                    // port might be disconnected, try to recover
+                    this.stopPingInterval()
+                    this.initConnection()
+                }
+            }
         }, 4000)
     }
 

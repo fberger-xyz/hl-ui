@@ -21,41 +21,40 @@ export default function Footer(props: { className?: string }) {
                 props.className,
             )}>
             {/* left */}
-            <LinkWrapper href={AppUrls.TEST_SHARED_WORKER} target="_blank" className="flex items-center gap-2">
-                {/* websocket status */}
-                <StyledTooltip content={<p>Open test page to check implementation</p>}>
-                    <div
-                        className={cn(
-                            'flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',
-                            wsStatus === 'connected' && 'border border-hlr-2 bg-hlb-6',
-                            wsStatus === 'connecting' && 'border border-hlr-3',
-                            wsStatus === 'disconnected' && 'border border-hlr-1 opacity-50',
-                        )}>
-                        {wsStatus === 'connecting' ? (
-                            <div className="size-3 animate-spin rounded-full border-2 border-hlt-9 border-t-transparent" />
-                        ) : (
-                            <div
-                                className={cn(
-                                    'size-2 rounded-full transition-colors',
-                                    wsStatus === 'connected' && 'bg-hlf-5',
-                                    wsStatus === 'disconnected' && 'bg-hlt-11',
-                                )}
-                            />
-                        )}
-                        <p
+
+            {/* websocket status */}
+            <StyledTooltip content={<p>Open test page to check implementation</p>}>
+                <div
+                    className={cn(
+                        'flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors',
+                        wsStatus === 'connected' && 'border border-hlr-2 bg-hlb-6',
+                        wsStatus === 'connecting' && 'border border-hlr-3',
+                        wsStatus === 'disconnected' && 'border border-hlr-1 opacity-50',
+                    )}>
+                    {wsStatus === 'connecting' ? (
+                        <div className="size-3 animate-spin rounded-full border-2 border-hlt-9 border-t-transparent" />
+                    ) : (
+                        <div
                             className={cn(
-                                'truncate text-xs font-medium transition-colors',
-                                wsStatus === 'connected' && 'text-hlt-5',
-                                wsStatus === 'connecting' && 'text-hlt-9',
-                                wsStatus === 'disconnected' && 'text-hlt-11',
-                            )}>
-                            HL websocket: {wsStatus === 'connected' && 'connected'}
-                            {wsStatus === 'connecting' && 'connecting...'}
-                            {wsStatus === 'disconnected' && 'disconnected'}
-                        </p>
-                    </div>
-                </StyledTooltip>
-            </LinkWrapper>
+                                'size-2 rounded-full transition-colors',
+                                wsStatus === 'connected' && 'bg-hlf-5',
+                                wsStatus === 'disconnected' && 'bg-hlt-11',
+                            )}
+                        />
+                    )}
+                    <p
+                        className={cn(
+                            'truncate text-xs font-medium transition-colors',
+                            wsStatus === 'connected' && 'text-hlt-5',
+                            wsStatus === 'connecting' && 'text-hlt-9',
+                            wsStatus === 'disconnected' && 'text-hlt-11',
+                        )}>
+                        HL websocket: {wsStatus === 'connected' && 'connected'}
+                        {wsStatus === 'connecting' && 'connecting...'}
+                        {wsStatus === 'disconnected' && 'disconnected'}
+                    </p>
+                </div>
+            </StyledTooltip>
 
             {/* right */}
             <nav className="flex flex-wrap items-center justify-center gap-4">

@@ -54,10 +54,13 @@ function parseClearinghouseState(state: HLClearinghouseState | null): {
 
     // extract positions
     if (state.assetPositions) {
+        logger.debug('Found assetPositions:', state.assetPositions.length)
         state.assetPositions.forEach((asset) => {
             const pos = asset.position
+            logger.debug('Checking position:', { coin: pos?.coin, szi: pos?.szi })
             if (pos && parseFloat(pos.szi) !== 0) {
                 const size = parseFloat(pos.szi)
+                logger.info('Adding position:', { coin: pos.coin, size })
                 positions.push({
                     coin: pos.coin,
                     side: size > 0 ? 'long' : 'short',
@@ -69,7 +72,7 @@ function parseClearinghouseState(state: HLClearinghouseState | null): {
                     pnlPercentage: typeof pos.returnOnEquity === 'number' ? pos.returnOnEquity : parseFloat(pos.returnOnEquity || '0'),
                     liqPrice: pos.liquidationPx || undefined,
                     margin: pos.marginUsed || '0',
-                    funding: pos.funding?.cumFunding?.allTime || '0',
+                    funding: pos.cumFunding?.allTime || '0', // fixed: cumFunding is directly on position
                     leverage: undefined,
                 })
             }
@@ -269,8 +272,10 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
 
                 // if we got user state, parse and set it
                 if (userState) {
-                    // just parse to validate, but don't need the results
-                    parseClearinghouseState(userState as unknown as HLClearinghouseState)
+                    logger.info('Got userState from API:', userState)
+                    // parse to check for positions
+                    const parsed = parseClearinghouseState(userState as unknown as HLClearinghouseState)
+                    logger.info('Parsed positions from userState:', parsed.positions)
                     // set webData with clearinghouse state
                     setWebData({ clearinghouseState: userState } as WebData2)
                 }
@@ -325,8 +330,14 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
             },
             (data) => {
                 if (isWebData2Message(data)) {
+                    logger.debug('WebData2 received:', data)
                     setWebData(data)
                     setIsLoading(false)
+                    // log positions if any
+                    const parsed = parseWebData2(data)
+                    if (parsed.positions.length > 0) {
+                        logger.info('WebSocket positions update:', parsed.positions)
+                    }
                 }
             },
         )
@@ -469,6 +480,11 @@ export function useHyperliquidUserAccount(options: UseHyperliquidUserAccountOpti
 
     // combine all account data
     const parsedWebData = parseWebData2(webData)
+
+    // log positions for debugging
+    if (parsedWebData.positions.length > 0) {
+        logger.info('Account has positions:', parsedWebData.positions)
+    }
 
     const accountData: UserAccountData = {
         ...parsedWebData,

@@ -431,6 +431,12 @@ function TradeTables() {
     const currentConfig = TABLE_CONFIGS[selectedTab]
     const currentData = currentConfig.getData(accountData)
 
+    // debug logging for positions
+    if (selectedTab === TradeTableTabs.POSITIONS) {
+        logger.debug('Positions tab selected, data:', currentData)
+        logger.debug('Account data positions:', accountData.positions)
+    }
+
     // render header columns
     const renderHeaderColumns = () => {
         const { HeaderComponent, columns } = currentConfig

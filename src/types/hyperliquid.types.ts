@@ -147,8 +147,19 @@ export interface Position {
     returnOnEquity: string
     liquidationPx?: string | null
     marginUsed: string
-    maxTradeSz: string
-    funding: FundingInfo
+    maxTradeSz?: string
+    leverage?: {
+        type: 'isolated' | 'cross'
+        value: number
+        rawUsd?: string
+    }
+    maxLeverage?: number
+    cumFunding?: {
+        allTime: string
+        sinceChange: string
+        sinceOpen: string
+    }
+    funding?: FundingInfo // keep for backward compatibility
 }
 
 export interface FundingInfo {

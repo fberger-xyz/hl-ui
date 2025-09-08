@@ -1,7 +1,6 @@
 export enum AppUrls {
     // app pages
     TRADE = '/',
-    TEST_SHARED_WORKER = '/test-sharedworker',
 
     // footer
     ONLINE = 'https://hyperliquid.statuspage.io/',
