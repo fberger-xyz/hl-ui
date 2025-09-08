@@ -59,8 +59,9 @@ function connectWebSocket() {
             broadcast({ type: 'connected' })
 
             // resubscribe to all active channels
-            activeSubscriptions.forEach((subscription) => {
+            activeSubscriptions.forEach((subscription, key) => {
                 if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log('[SharedWorker] Resubscribing to:', key)
                     ws.send(
                         JSON.stringify({
                             method: 'subscribe',
@@ -108,10 +109,37 @@ function connectWebSocket() {
 
                 // route to subscribers
                 if (channel) {
+                    // build subscription key from message data
+                    let routingKey = channel
+                    
+                    // extract coin/user from message data for routing
+                    if (messageData) {
+                        if (Array.isArray(messageData) && messageData.length > 0) {
+                            const firstItem = messageData[0]
+                            if (firstItem && firstItem.coin) {
+                                routingKey += ':' + firstItem.coin
+                            }
+                        } else if (typeof messageData === 'object') {
+                            // check for coin or symbol fields
+                            if (messageData.coin) {
+                                routingKey += ':' + messageData.coin
+                            } else if (messageData.s) {
+                                // candle messages use 's' for symbol
+                                routingKey += ':' + messageData.s
+                            } else if (messageData.user) {
+                                // user-specific subscriptions
+                                routingKey += ':' + messageData.user
+                            }
+                        }
+                    }
+                    
                     const subscribers = []
                     ports.forEach((portData, portId) => {
-                        portData.subscriptions.forEach((subChannel) => {
-                            if (subChannel === channel || subChannel.startsWith(channel + ':')) subscribers.push(portId)
+                        portData.subscriptions.forEach((subKey) => {
+                            // exact match or base channel match for broadcasts
+                            if (subKey === routingKey || (subKey === channel && !routingKey.includes(':'))) {
+                                subscribers.push(portId)
+                            }
                         })
                     })
 
@@ -352,17 +380,24 @@ self.onconnect = (event) => {
 
             case 'subscribe':
                 if (message.subscription) {
-                    const channel = message.subscription.type
+                    // build unique key with type, coin, user, interval
+                    const sub = message.subscription
+                    let subscriptionKey = sub.type
+                    if (sub.coin) subscriptionKey += `:${sub.coin}`
+                    if (sub.user) subscriptionKey += `:${sub.user}`
+                    if (sub.interval) subscriptionKey += `:${sub.interval}`
+                    
                     const portData = ports.get(portId)
 
                     if (portData) {
                         // track subscription for this port
-                        portData.subscriptions.add(channel)
+                        portData.subscriptions.add(subscriptionKey)
 
                         // subscribe if not already subscribed
-                        if (!activeSubscriptions.has(channel)) {
-                            activeSubscriptions.set(channel, message.subscription)
+                        if (!activeSubscriptions.has(subscriptionKey)) {
+                            activeSubscriptions.set(subscriptionKey, message.subscription)
                             if (ws && ws.readyState === WebSocket.OPEN) {
+                                console.log(`[SharedWorker] New subscription: ${subscriptionKey}`)
                                 ws.send(
                                     JSON.stringify({
                                         method: 'subscribe',
@@ -370,12 +405,14 @@ self.onconnect = (event) => {
                                     }),
                                 )
                             }
+                        } else {
+                            console.log(`[SharedWorker] Already subscribed to: ${subscriptionKey}`)
                         }
                         sendToPort(
                             port,
                             {
                                 type: 'subscribed',
-                                channel: channel,
+                                channel: sub.type,
                             },
                             portId,
                         )

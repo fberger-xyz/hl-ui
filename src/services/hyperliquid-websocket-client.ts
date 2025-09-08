@@ -130,8 +130,10 @@ class HyperliquidWebSocketClient {
 
                     this.startHeartbeat()
 
-                    // session recovery: flush queue then resubscribe
-                    this.processMessageQueue()
+                    // clear queue first to avoid duplicates
+                    this.messageQueue = []
+
+                    // resubscribe all active subscriptions
                     this.resubscribeAll()
 
                     resolve()
@@ -324,6 +326,7 @@ class HyperliquidWebSocketClient {
                     }
 
                     if (this.messagesSent < this.WS_MESSAGE_LIMIT) {
+                        console.log(`[WS] Resubscribing after reconnect:`, key, subscription.subscription)
                         this.ws.send(JSON.stringify(subscription))
                         this.messagesSent++
                     } else {
@@ -397,6 +400,8 @@ class HyperliquidWebSocketClient {
         const isNewSubscription = !this.subscriptions.has(key)
         if (isNewSubscription) {
             this.subscriptions.set(key, new Set())
+        } else {
+            console.log(`[WS] Already subscribed to:`, key, 'skipping WS message')
         }
         this.subscriptions.get(key)!.add(callback)
 
@@ -415,7 +420,7 @@ class HyperliquidWebSocketClient {
                 }
 
                 if (this.messagesSent < this.WS_MESSAGE_LIMIT) {
-                    logger.debug(`[WS] Sending subscription:`, message.subscription)
+                    console.log(`[WS] Sending NEW subscription:`, key, message.subscription)
                     this.ws.send(JSON.stringify(message))
                     this.messagesSent++
                 } else {

@@ -303,7 +303,7 @@ class HyperliquidSharedWebSocketClient {
             if (this.port) {
                 this.port.postMessage({
                     type: 'unsubscribe',
-                    channel: options.type,
+                    channel: key, // use full subscription key
                 })
             }
         }

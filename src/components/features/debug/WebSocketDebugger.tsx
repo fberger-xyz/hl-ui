@@ -26,9 +26,7 @@ export function WebSocketDebugger() {
             setSubscriptions(subscriptionManager.getActiveSubscriptions())
 
             // get shared worker stats
-            hyperliquidWS.getStats((newStats) => {
-                setStats(newStats)
-            })
+            hyperliquidWS.getStats((newStats) => setStats(newStats))
         }, 1000)
 
         return () => clearInterval(interval)
